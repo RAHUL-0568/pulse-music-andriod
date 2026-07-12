@@ -71,6 +71,7 @@
         "@capacitor/haptics": "^8.0.1",
         "@capacitor/ios": "^8.2.0",
         "@capgo/capacitor-media-session": "^8.0.19",
+        "@codetrix-studio/capacitor-google-auth": "^3.4.0-rc.4",
         "@dantheman827/taglib-ts": "^0.1.5",
         "@distube/ytdl-core": "^4.16.12",
         "@ffmpeg/core": "^0.12.10",

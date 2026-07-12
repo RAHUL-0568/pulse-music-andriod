@@ -10,6 +10,13 @@ const config: CapacitorConfig = {
         splashBackgroundColor: '#000000',
         splashBackgroundColorDark: '#000000',
     },
+    plugins: {
+        GoogleAuth: {
+            scopes: ['profile', 'email'],
+            serverClientId: '217687474888-5151b2u1grl7a62omop5ui48995f4eto.apps.googleusercontent.com',
+            forceCodeForRefreshToken: true,
+        }
+    }
 };
 
 export default config;

@@ -4,4 +4,5 @@
     <string name="title_activity_main">Pulse Music Music</string>
     <string name="package_name">tf.pulsemusic.music</string>
     <string name="custom_url_scheme">tf.pulsemusic.music</string>
+    <string name="server_client_id">217687474888-5151b2u1grl7a62omop5ui48995f4eto.apps.googleusercontent.com</string>
 </resources>
