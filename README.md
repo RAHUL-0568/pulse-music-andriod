@@ -207,3 +207,8 @@ adb -s emulator-5554 shell am start -S -W -n tf.pulsemusic.music/.MainActivity
 - Full safe-area support for gesture navigation
 - Fallback for browsers without `color-mix()` support
 - **Files changed:** `web-frontend/styles.css` only (CSS-only change, no HTML/JS)
+
+### 2026-07-30: Artist Page Caching & Bugfixes
+- Fixed HTTP 422 errors when navigating to the Artist Page from the Main Player.
+- Implemented robust ArtistRepository with ArtistCache, ArtistImageCache, and deduplicator for instant loading and offline robustness.
+- Implemented intelligent background prefetching on track playback and search results rendering.
