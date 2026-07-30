@@ -2,13 +2,16 @@ import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
     appId: 'tf.pulsemusic.music',
-    appName: 'Pulse Music Music',
+    appName: 'Pulse Music',
     webDir: '../web-frontend/dist',
     assets: {
         iconBackgroundColor: '#000000',
         iconBackgroundColorDark: '#000000',
         splashBackgroundColor: '#000000',
         splashBackgroundColorDark: '#000000',
+    },
+    server: {
+        cleartext: true
     },
     plugins: {
         GoogleAuth: {

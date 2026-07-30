@@ -13,8 +13,8 @@ android {
         applicationId = "tf.pulsemusic.music"
         minSdk = rootProject.extra["minSdkVersion"] as Int
         targetSdk = rootProject.extra["targetSdkVersion"] as Int
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 251
+        versionName = "2.5.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         
         androidResources {
