@@ -208,6 +208,10 @@ adb -s emulator-5554 shell am start -S -W -n tf.pulsemusic.music/.MainActivity
 - Fallback for browsers without `color-mix()` support
 - **Files changed:** `web-frontend/styles.css` only (CSS-only change, no HTML/JS)
 
+### 2026-07-31: Artist Page Song Images Fix & APK Release
+- **Artist Page Song Images Fix:** Resolved track images failing to load on the Artist Page by mapping missing track album covers from the fetched `albumMap` and falling back to the artist's picture.
+- **APK Rebuilt:** Built and copied the new debug APK to the Desktop as `PulseMusic-Debug.apk`.
+
 ### 2026-07-30: Artist Page Caching & Bugfixes
 - Fixed HTTP 422 errors when navigating to the Artist Page from the Main Player.
 - Implemented robust ArtistRepository with ArtistCache, ArtistImageCache, and deduplicator for instant loading and offline robustness.
