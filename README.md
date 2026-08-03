@@ -166,6 +166,7 @@ adb -s emulator-5554 shell am start -S -W -n tf.pulsemusic.music/.MainActivity
 - **Deep link host** in `AndroidManifest.xml` points to `web-frontend-rho-six.vercel.app` (This is intentional for the Jam feature, DO NOT CHANGE).
 - **`google-services.json`** is missing — Firebase/push notifications won't work without it.
 - ~~**Capacitor config mismatch** — `web-frontend/capacitor.config.ts` is missing the `GoogleAuth` plugin block that `mobile-app/capacitor.config.ts` has~~ (Fixed)
+- **Search Page & Navigation UI Cleanup (Planned):** Unify search history types to `'track'` instead of `'song'`, auto-dismiss the floating suggestions dropdown on navigation/playback, and dismiss the fullscreen player overlay when opening artist/album pages.
 
 ---
 
