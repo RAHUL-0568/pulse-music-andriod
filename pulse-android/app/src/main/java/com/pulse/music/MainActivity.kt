@@ -125,6 +125,7 @@ class MainActivity : ComponentActivity() {
                 val showMiniPlayer = currentRoute != "now_playing" && currentRoute != "auth_login" && currentRoute != "auth_register" && currentRoute != "auth_forgot_password"
                 val currentSong by musicPlayerManager.currentSong.collectAsState()
                 val isPlaying by musicPlayerManager.isPlaying.collectAsState()
+                val isBuffering by musicPlayerManager.isBuffering.collectAsState()
                 val searchFocusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
                 val scope = rememberCoroutineScope()
 
@@ -345,6 +346,7 @@ class MainActivity : ComponentActivity() {
                                     queue = queue,
                                     currentIndex = currentIndex,
                                     isPlaying = isPlaying,
+                                    isBuffering = isBuffering,
                                     isShuffleEnabled = isShuffleEnabled,
                                     onTogglePlay = { musicPlayerManager.togglePlayPause() },
                                     onToggleShuffle = { musicPlayerManager.toggleShuffle() },
@@ -443,6 +445,7 @@ fun MiniPlayer(
     queue: List<com.pulse.music.domain.Song>,
     currentIndex: Int,
     isPlaying: Boolean,
+    isBuffering: Boolean = false,
     isShuffleEnabled: Boolean = false,
     onTogglePlay: () -> Unit,
     onToggleShuffle: (() -> Unit)? = null,
@@ -494,6 +497,7 @@ fun MiniPlayer(
         MiniPlayerCard(
             song = currentSong,
             isPlaying = isPlaying,
+            isBuffering = isBuffering,
             isShuffleEnabled = isShuffleEnabled,
             onTogglePlay = onTogglePlay,
             onToggleShuffle = onToggleShuffle,
@@ -558,6 +562,7 @@ fun MiniPlayer(
 fun MiniPlayerCard(
     song: com.pulse.music.domain.Song,
     isPlaying: Boolean,
+    isBuffering: Boolean = false,
     isShuffleEnabled: Boolean = false,
     onTogglePlay: (() -> Unit)? = null,
     onToggleShuffle: (() -> Unit)? = null,
@@ -632,12 +637,16 @@ fun MiniPlayerCard(
                     }
                 }
                 IconButton(onClick = onTogglePlay, modifier = Modifier.size(48.dp)) {
-                    Icon(
-                        if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = "Play/Pause",
-                        tint = Color.White,
-                        modifier = Modifier.size(28.dp)
-                    )
+                    if (isBuffering) {
+                        CircularProgressIndicator(color = Color.White, strokeWidth = 2.5.dp, modifier = Modifier.size(24.dp))
+                    } else {
+                        Icon(
+                            if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            contentDescription = "Play/Pause",
+                            tint = Color.White,
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
                 }
             } else {
                 Spacer(modifier = Modifier.width(48.dp))

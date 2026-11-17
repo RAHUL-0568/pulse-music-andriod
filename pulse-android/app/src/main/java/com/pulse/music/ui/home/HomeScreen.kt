@@ -62,6 +62,7 @@ fun HomeScreen(
     onNavigateToProfile: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val sectionsLoading by viewModel.sectionsLoading.collectAsState()
     val username by viewModel.username.collectAsState()
     val profilePicUri by viewModel.profilePicUri.collectAsState()
     var showHistory by remember { mutableStateOf(false) }
@@ -155,27 +156,32 @@ fun HomeScreen(
             modifier = Modifier.fillMaxSize()
         ) {
             item {
-                Text(
-                    text = greetingText,
-                    fontSize = 28.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onBackground,
-                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 24.dp, bottom = 16.dp)
-                )
+                val daypart = when (hour) {
+                    in 5..11 -> "Good morning"
+                    in 12..16 -> "Good afternoon"
+                    in 17..21 -> "Good evening"
+                    else -> "Late night"
+                }
+                Column(modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 4.dp)) {
+                    Text(text = daypart, fontSize = 14.sp, color = Color(0xFF9A9A9A))
+                    Text(
+                        text = username?.takeIf { it.isNotBlank() } ?: "Welcome",
+                        fontSize = 32.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onBackground,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
             
             when (val state = uiState) {
                 is HomeUiState.Loading -> {
-                    item { 
-                        Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-                        }
-                    }
+                    item { PlaylistRowSkeleton() }
+                    item { PlaylistRowSkeleton() }
                 }
                 is HomeUiState.Error -> {
-                    item { 
-                        Text("Error: ${state.message}", color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp)) 
-                    }
+                    item { HomeErrorCard(message = state.message, onRetry = { viewModel.loadData(background = false) }) }
                 }
                 is HomeUiState.Success -> {
                     if (state.recentPlays.isNotEmpty()) {
@@ -197,27 +203,9 @@ fun HomeScreen(
                         }
                     }
 
-                    item {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(start = 24.dp, end = 24.dp, top = 32.dp, bottom = 16.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "Best Songs For You",
-                                fontSize = 34.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White
-                            )
-                            Icon(
-                                imageVector = Icons.Default.ChevronRight,
-                                contentDescription = null,
-                                tint = Color.White,
-                                modifier = Modifier.size(32.dp)
-                            )
-                        }
+                    // Shown while it loads, or once it has songs; hidden if the server gave us none.
+                    if (state.suggested.isNotEmpty() || sectionsLoading.suggested) item {
+                        SectionTitle("Picked for you")
                         
                         val shimmerBrush = rememberShimmerBrush()
                         val screenWidth = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.dp
@@ -277,6 +265,11 @@ fun HomeScreen(
                         }
                     }
                     
+                    // Playlist rows are built from whatever the server's home response contains.
+                    if (sectionsLoading.modules && state.modules.isEmpty()) {
+                        item { PlaylistRowSkeleton() }
+                        item { PlaylistRowSkeleton() }
+                    }
                     state.modules.forEach { module ->
                         if (module.items.isNotEmpty()) {
                             item {
@@ -303,6 +296,71 @@ fun HomeScreen(
             
             // Proper bottom safe area padding to scroll behind the floating nav bar
             item { Spacer(modifier = Modifier.height(140.dp)) }
+        }
+    }
+}
+
+/** Grey placeholder row (title + cards) shown while a section is still loading. */
+@Composable
+fun PlaylistRowSkeleton() {
+    val brush = rememberShimmerBrush()
+    Column {
+        Box(
+            modifier = Modifier
+                .padding(start = 16.dp, top = 32.dp, bottom = 16.dp)
+                .width(160.dp)
+                .height(22.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .background(brush)
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.padding(horizontal = 16.dp)) {
+            repeat(3) {
+                Column(modifier = Modifier.width(150.dp)) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(1f)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(brush)
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(0.8f)
+                            .height(14.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(brush)
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** Friendly message with a retry button, instead of a raw error. */
+@Composable
+fun HomeErrorCard(message: String, onRetry: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp, vertical = 48.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Icon(Icons.Default.CloudOff, contentDescription = null, tint = Color(0xFF9A9A9A), modifier = Modifier.size(48.dp))
+        Spacer(Modifier.height(16.dp))
+        Text(
+            text = message,
+            color = MaterialTheme.colorScheme.onBackground,
+            fontSize = 16.sp,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+        )
+        Spacer(Modifier.height(20.dp))
+        Button(
+            onClick = onRetry,
+            shape = RoundedCornerShape(14.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary, contentColor = Color.White)
+        ) {
+            Text("Try again", fontWeight = FontWeight.SemiBold)
         }
     }
 }

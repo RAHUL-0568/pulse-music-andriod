@@ -2,13 +2,16 @@ package com.pulse.music.ui.home
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.pulse.music.data.repository.MusicRepository
 import com.pulse.music.domain.Song
 import com.pulse.music.player.MusicPlayerManager
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.async
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 sealed class HomeUiState {
@@ -21,6 +24,9 @@ sealed class HomeUiState {
     ) : HomeUiState()
     data class Error(val message: String) : HomeUiState()
 }
+
+/** Which parts of Home are still waiting for the server (the screen shows placeholders for them). */
+data class HomeSectionsLoading(val suggested: Boolean = false, val modules: Boolean = false)
 
 @HiltViewModel
 class HomeViewModel @Inject constructor(
@@ -42,6 +48,9 @@ class HomeViewModel @Inject constructor(
     private val _uiState = MutableStateFlow<HomeUiState>(HomeUiState.Loading)
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 
+    private val _sectionsLoading = MutableStateFlow(HomeSectionsLoading())
+    val sectionsLoading: StateFlow<HomeSectionsLoading> = _sectionsLoading.asStateFlow()
+
     val username: StateFlow<String?> = authRepository.username.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
@@ -54,169 +63,159 @@ class HomeViewModel @Inject constructor(
         initialValue = null
     )
 
+    private var loadJob: Job? = null
+
     init {
-        // Check in-memory cache first
-        val memCacheValid = (cachedUiState?.suggested?.size ?: 0) >= 8
-        
-        if (!memCacheValid) {
-            cachedUiState = null
-            // Try disk cache
+        // Memory first, then the disk copy, so Home is never empty when we already have something to show.
+        if (cachedUiState == null) {
             try {
                 val cacheFile = java.io.File(context.cacheDir, "home_cache.json")
                 if (cacheFile.exists()) {
-                    val cachedJson = cacheFile.readText()
-                    val parsed = com.google.gson.Gson().fromJson(cachedJson, HomeUiState.Success::class.java)
-                    if (parsed != null && (parsed.suggested?.size ?: 0) >= 8) {
-                        cachedUiState = parsed
-                    } else {
-                        try { cacheFile.delete() } catch (e: Exception) {}
-                    }
+                    val parsed = com.google.gson.Gson().fromJson(cacheFile.readText(), HomeUiState.Success::class.java)
+                    if (parsed != null && (parsed.suggested?.size ?: 0) > 0) cachedUiState = parsed
                 }
-            } catch (e: Exception) { /* ignore */ }
+            } catch (e: Exception) { /* a broken cache file is simply ignored */ }
         }
 
-        if (cachedUiState != null) {
-            // Show cache immediately, then refresh in background
-            _uiState.value = cachedUiState!!
+        val cached = cachedUiState
+        if (cached != null) {
+            _uiState.value = cached
             loadData(background = true)
         } else {
             loadData(background = false)
         }
     }
 
-    fun loadData(background: Boolean = false) {
-        viewModelScope.launch {
-            if (!background) {
-                _uiState.value = HomeUiState.Loading
-            }
-            try {
-                // Kick off independent parallel fetches immediately
-                val trendingDeferred = async { repository.getTrending() }
-                val homeDeferred = async { repository.getHome() }
-                val recentSongsDeferred = async { repository.getRecentSongs() }
-                
-                // Fetch actual recently played songs from local SharedPreferences
-                var localSongs: List<Song> = emptyList()
-                try {
-                    val prefs = context.getSharedPreferences("pulse_actual_recent_plays", android.content.Context.MODE_PRIVATE)
-                    val json = prefs.getString("plays", "[]")
-                    val array = com.google.gson.Gson().fromJson(json, Array<Song>::class.java)
-                    localSongs = array?.toList()?.filter { !it.id.startsWith("local_") } ?: emptyList()
-                } catch (e: Exception) {}
+    private fun updateSuccess(transform: (HomeUiState.Success) -> HomeUiState.Success) {
+        _uiState.update { s -> if (s is HomeUiState.Success) transform(s) else s }
+    }
 
-                val actualRecentSongs = (recentSongsDeferred.await().getOrNull() ?: emptyList()).filter { !it.id.startsWith("local_") }
-                
-                // Merge local and backend songs, keeping the most recent first
-                val mergedList = (localSongs + actualRecentSongs).distinctBy { it.id }.take(20)
-                val recentPlaysList = mergedList
-                
-                // Sync any local songs to the backend if they are missing
-                val backendIds = actualRecentSongs.map { it.id }.toSet()
-                val missingInBackend = localSongs.filter { it.id !in backendIds }
-                if (missingInBackend.isNotEmpty()) {
-                    launch {
-                        missingInBackend.reversed().forEach { song ->
-                            try { repository.addRecentSong(song) } catch(e: Exception) {}
+    private fun readLocalRecents(): List<Song> {
+        return try {
+            val prefs = context.getSharedPreferences("pulse_actual_recent_plays", android.content.Context.MODE_PRIVATE)
+            val array = com.google.gson.Gson().fromJson(prefs.getString("plays", "[]"), Array<Song>::class.java)
+            array?.toList()?.filter { !it.id.startsWith("local_") } ?: emptyList()
+        } catch (e: Exception) { emptyList() }
+    }
+
+    private fun saveLocalRecents(songs: List<Song>) {
+        try {
+            val prefs = context.getSharedPreferences("pulse_actual_recent_plays", android.content.Context.MODE_PRIVATE)
+            prefs.edit().putString("plays", com.google.gson.Gson().toJson(songs)).apply()
+        } catch (e: Exception) { }
+    }
+
+    fun loadData(background: Boolean = false) {
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
+            _sectionsLoading.value = HomeSectionsLoading(suggested = true, modules = true)
+
+            // 1. What we already know on the phone appears instantly.
+            val localSongs = readLocalRecents()
+            if (!background || _uiState.value !is HomeUiState.Success) {
+                _uiState.value = HomeUiState.Success(localSongs.take(5), localSongs, emptyList(), emptyList())
+            }
+
+            var gotModules = false
+            var gotSuggested = false
+
+            coroutineScope {
+                // 2. Playlist rows: each appears the moment the server answers.
+                launch {
+                    try {
+                        val modules = repository.getHome().getOrNull()?.modules
+                        if (modules != null) {
+                            gotModules = modules.isNotEmpty()
+                            updateSuccess { it.copy(modules = modules) }
                         }
+                    } finally {
+                        _sectionsLoading.update { it.copy(modules = false) }
                     }
                 }
 
-                // Update local cache so it reflects the backend
-                try {
-                    val prefs = context.getSharedPreferences("pulse_actual_recent_plays", android.content.Context.MODE_PRIVATE)
-                    prefs.edit().putString("plays", com.google.gson.Gson().toJson(recentPlaysList)).apply()
-                } catch (e: Exception) {}
+                // 3. History (merged with the server's copy) and "picked for you".
+                launch {
+                    try {
+                        val trendingDeferred = async { repository.getTrending() }
+                        val remote = (repository.getRecentSongs().getOrNull() ?: emptyList())
+                            .filter { !it.id.startsWith("local_") }
+                        val merged = (localSongs + remote).distinctBy { it.id }.take(20)
 
-                val suggestedDeferred1 = if (recentPlaysList.size > 0) {
-                    async { repository.getRecommendations(recentPlaysList[0].artist, recentPlaysList[0].title) }
-                } else null
-                val suggestedDeferred2 = if (recentPlaysList.size > 1) {
-                    async { repository.getRecommendations(recentPlaysList[1].artist, recentPlaysList[1].title) }
-                } else null
-                val suggestedDeferred3 = if (recentPlaysList.size > 2) {
-                    async { repository.getRecommendations(recentPlaysList[2].artist, recentPlaysList[2].title) }
-                } else null
-                
-                val limitedRecentPlays = recentPlaysList.take(5)
-                
-                val rawSuggested1 = suggestedDeferred1?.await()?.getOrNull() ?: emptyList()
-                val rawSuggested2 = suggestedDeferred2?.await()?.getOrNull() ?: emptyList()
-                val rawSuggested3 = suggestedDeferred3?.await()?.getOrNull() ?: emptyList()
-                val rawTrending = trendingDeferred.await().getOrNull() ?: emptyList()
+                        if (merged.isNotEmpty()) {
+                            updateSuccess { it.copy(recentPlays = merged.take(5), allRecentPlays = merged) }
+                            saveLocalRecents(merged)
+                            // push songs the server doesn't know yet
+                            val remoteIds = remote.map { it.id }.toSet()
+                            launch {
+                                localSongs.filter { it.id !in remoteIds }.reversed().forEach { song ->
+                                    try { repository.addRecentSong(song) } catch (e: Exception) { }
+                                }
+                            }
+                        }
 
-                // If no recent songs (not logged in), bulk-fill with parallel genre searches
-                val extraSongs = if (recentPlaysList.isEmpty()) {
-                    val genres = listOf("top hits 2025", "best bollywood 2024", "popular hindi songs", "romantic songs")
-                    val deferreds = genres.map { q -> async { 
-                        try { repository.searchOnline(q).getOrNull()?.songs ?: emptyList() } catch(e: Exception) { emptyList() }
-                    }}
-                    deferreds.flatMap { it.await() }
-                } else emptyList()
+                        val recDeferreds = merged.take(3).map { s ->
+                            async { repository.getRecommendations(s.artist, s.title) }
+                        }
+                        val trending = trendingDeferred.await().getOrNull() ?: emptyList()
+                        val recs = recDeferreds.flatMap { it.await().getOrNull() ?: emptyList() }
 
-                val suggested = (rawSuggested1 + rawSuggested2 + rawSuggested3 + rawTrending + extraSongs)
-                    .distinctBy { it.id }
-                    .take(32)
-                
-                val homeData = homeDeferred.await().getOrNull()
-                
-                val successState = HomeUiState.Success(
-                    recentPlays = limitedRecentPlays,
-                    allRecentPlays = recentPlaysList,
-                    suggested = suggested,
-                    modules = homeData?.modules ?: emptyList()
-                )
-                cachedUiState = successState
-                _uiState.value = successState
-                
-                // Save to cache directory so it clears on Clear Cache
-                try {
-                    val cacheFile = java.io.File(context.cacheDir, "home_cache.json")
-                    cacheFile.writeText(com.google.gson.Gson().toJson(successState))
-                } catch (e: Exception) {
-                    // Ignore save error
+                        // brand-new user with no history: fill the page from a few popular searches
+                        val extra = if (merged.isEmpty()) {
+                            listOf("top hits 2025", "best bollywood 2024", "popular hindi songs", "romantic songs")
+                                .map { q -> async { try { repository.searchOnline(q).getOrNull()?.songs ?: emptyList() } catch (e: Exception) { emptyList() } } }
+                                .flatMap { it.await() }
+                        } else emptyList()
+
+                        val suggested = (recs + trending + extra).distinctBy { it.id }.take(32)
+                        if (suggested.isNotEmpty()) {
+                            gotSuggested = true
+                            updateSuccess { it.copy(suggested = suggested) }
+                        }
+                    } catch (e: Exception) {
+                        android.util.Log.e("PulseAPI", "Home suggestions failed", e)
+                    } finally {
+                        _sectionsLoading.update { it.copy(suggested = false) }
+                    }
                 }
-                
-            } catch (e: Exception) {
-                android.util.Log.e("PulseAPI", "HomeViewModel error: ", e)
-                if (cachedUiState != null) {
-                    _uiState.value = cachedUiState!! // Seamless offline fallback
-                    
-                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                        android.widget.Toast.makeText(context, "Offline Mode: Showing cached songs", android.widget.Toast.LENGTH_SHORT).show()
+            }
+
+            // 4. Nothing at all came back: offline. Use the saved copy, or show a friendly retry card.
+            val finalState = _uiState.value
+            if (finalState is HomeUiState.Success) {
+                val empty = !gotModules && !gotSuggested && finalState.suggested.isEmpty() && finalState.modules.isEmpty()
+                if (empty) {
+                    val cached = cachedUiState
+                    if (cached != null) {
+                        _uiState.value = cached
+                    } else if (finalState.allRecentPlays.isEmpty()) {
+                        _uiState.value = HomeUiState.Error("We can't reach Pulse right now. Check your connection and try again.")
                     }
                 } else {
-                    _uiState.value = HomeUiState.Error(e.message ?: "Network error and no cache available")
+                    cachedUiState = finalState
+                    withContext(Dispatchers.IO) {
+                        try {
+                            java.io.File(context.cacheDir, "home_cache.json")
+                                .writeText(com.google.gson.Gson().toJson(finalState))
+                        } catch (e: Exception) { }
+                    }
                 }
             }
         }
     }
+
     fun removeRecentSong(song: Song) {
         viewModelScope.launch {
-            try {
-                repository.removeRecentSong(song.id)
-                
-                val prefs = context.getSharedPreferences("pulse_actual_recent_plays", android.content.Context.MODE_PRIVATE)
-                val json = prefs.getString("plays", "[]")
-                val array = com.google.gson.Gson().fromJson(json, Array<Song>::class.java)
-                val localSongs = array?.toList() ?: emptyList()
-                
-                val newList = localSongs.filter { it.id != song.id }
-                prefs.edit().putString("plays", com.google.gson.Gson().toJson(newList)).apply()
-                
-                val currentState = _uiState.value
-                if (currentState is HomeUiState.Success) {
-                    val updatedAll = currentState.allRecentPlays.filter { it.id != song.id }
-                    val successState = currentState.copy(
-                        recentPlays = updatedAll.take(5),
-                        allRecentPlays = updatedAll
-                    )
-                    cachedUiState = successState
-                    _uiState.value = successState
-                    
-                    val cacheFile = java.io.File(context.cacheDir, "home_cache.json")
-                    cacheFile.writeText(com.google.gson.Gson().toJson(successState))
-                }
-            } catch (e: Exception) {}
+            // Local first, so it disappears immediately (and works offline).
+            val newList = readLocalRecents().filter { it.id != song.id }
+            saveLocalRecents(newList)
+
+            updateSuccess { current ->
+                val updatedAll = current.allRecentPlays.filter { it.id != song.id }
+                current.copy(recentPlays = updatedAll.take(5), allRecentPlays = updatedAll)
+            }
+            (_uiState.value as? HomeUiState.Success)?.let { cachedUiState = it }
+
+            try { repository.removeRecentSong(song.id) } catch (e: Exception) { }
         }
     }
 }

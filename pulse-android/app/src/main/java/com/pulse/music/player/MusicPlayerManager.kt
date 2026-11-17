@@ -242,6 +242,10 @@ class MusicPlayerManager @Inject constructor(
     private val _isPlaying = MutableStateFlow(false)
     val isPlaying: StateFlow<Boolean> = _isPlaying.asStateFlow()
 
+    /** True while a song is being looked up or buffered: the UI shows a small spinner instead of an error. */
+    private val _isBuffering = MutableStateFlow(false)
+    val isBuffering: StateFlow<Boolean> = _isBuffering.asStateFlow()
+
     private val _currentPosition = MutableStateFlow(0L)
     val currentPosition: StateFlow<Long> = _currentPosition.asStateFlow()
 
@@ -634,6 +638,7 @@ class MusicPlayerManager @Inject constructor(
                 player.play()
                 return
             }
+            _isBuffering.value = false
             android.os.Handler(android.os.Looper.getMainLooper()).post {
                 android.widget.Toast.makeText(context, "Couldn't play this song. Check your connection and try again.", android.widget.Toast.LENGTH_LONG).show()
             }
@@ -714,6 +719,9 @@ class MusicPlayerManager @Inject constructor(
         }
 
         override fun onPlaybackStateChanged(playbackState: Int) {
+            if (targetPlayer === player) {
+                _isBuffering.value = playbackState == Player.STATE_BUFFERING
+            }
             if (playbackState == Player.STATE_READY) {
                 _duration.value = player.duration.coerceAtLeast(0L)
                 errorRetrySongId = null // this song loaded fine, so a future error gets a fresh retry
@@ -735,6 +743,7 @@ class MusicPlayerManager @Inject constructor(
         abortCrossfade()
         saveRecentPlay(song)
         playSongJob?.cancel()
+        _isBuffering.value = true // shows the spinner while the stream address is looked up
         playSongJob = scope.launch {
             _queue.value = allSongs
             val idx = allSongs.indexOfFirst { it.id == song.id }.coerceAtLeast(0)

@@ -563,7 +563,13 @@ fun MainPlayerContent(
                         .clickable { viewModel.togglePlayPause() },
                     contentAlignment = Alignment.Center
                 ) { 
-                    Icon(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, "Play/Pause", tint = Color(0xFF1A1A2E), modifier = Modifier.size(32.dp)) 
+                    val buffering by viewModel.isBuffering.collectAsState()
+                    if (buffering) {
+                        // A small spinner while the song loads, instead of an error
+                        CircularProgressIndicator(color = Color(0xFF1A1A2E), strokeWidth = 3.dp, modifier = Modifier.size(28.dp))
+                    } else {
+                        Icon(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, "Play/Pause", tint = Color(0xFF1A1A2E), modifier = Modifier.size(32.dp))
+                    }
                 }
                 
                 IconButton(onClick = { viewModel.skipNext() }) { 

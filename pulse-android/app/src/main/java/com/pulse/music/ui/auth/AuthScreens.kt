@@ -1,8 +1,8 @@
 package com.pulse.music.ui.auth
 
-import androidx.compose.foundation.background
+import android.util.Log
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Lock
@@ -11,23 +11,26 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.unit.dp
-import androidx.hilt.navigation.compose.hiltViewModel
-import android.widget.Toast
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.credentials.CredentialManager
+import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
+import androidx.credentials.exceptions.GetCredentialCancellationException
+import androidx.credentials.exceptions.GetCredentialException
+import androidx.credentials.exceptions.NoCredentialException
+import androidx.hilt.navigation.compose.hiltViewModel
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
-import kotlinx.coroutines.launch
 import com.pulse.music.R
-import androidx.compose.foundation.Image
-import androidx.compose.ui.res.painterResource
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LoginScreen(
     onNavigateToHome: () -> Unit,
@@ -37,178 +40,157 @@ fun LoginScreen(
 ) {
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
+    var loading by remember { mutableStateOf(false) }
+    var googleLoading by remember { mutableStateOf(false) }
     val token by viewModel.token.collectAsState()
     val context = LocalContext.current
-    val coroutineScope = rememberCoroutineScope()
+    val scope = rememberCoroutineScope()
+    val focus = LocalFocusManager.current
 
+    // Saving the token (any kind of login) is what moves us to Home.
     LaunchedEffect(token) {
-        if (!token.isNullOrEmpty()) {
-            onNavigateToHome()
+        if (!token.isNullOrEmpty()) onNavigateToHome()
+    }
+
+    fun submit() {
+        focus.clearFocus()
+        if (email.isBlank() || password.isBlank()) {
+            error = "Enter your email and password."
+            return
+        }
+        error = null
+        loading = true
+        viewModel.login(email.trim(), password, { loading = false }, { msg ->
+            loading = false
+            error = msg
+        })
+    }
+
+    fun signInWithGoogle() {
+        error = null
+        googleLoading = true
+        scope.launch {
+            try {
+                val option = GetGoogleIdOption.Builder()
+                    .setFilterByAuthorizedAccounts(false)
+                    .setServerClientId(context.getString(R.string.default_web_client_id))
+                    .setAutoSelectEnabled(false)
+                    .build()
+                val request = GetCredentialRequest.Builder().addCredentialOption(option).build()
+                val result = CredentialManager.create(context).getCredential(context, request)
+                val credential = result.credential
+
+                val idToken: String? = if (credential is CustomCredential &&
+                    credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
+                ) {
+                    GoogleIdTokenCredential.createFrom(credential.data).idToken
+                } else null
+
+                if (idToken == null) {
+                    googleLoading = false
+                    error = "Google sign-in returned something unexpected. Please try again."
+                    return@launch
+                }
+                viewModel.socialLogin("google", idToken, { googleLoading = false }, { msg ->
+                    googleLoading = false
+                    error = msg
+                })
+            } catch (e: GetCredentialCancellationException) {
+                googleLoading = false // the user closed the Google window: no error needed
+            } catch (e: NoCredentialException) {
+                googleLoading = false
+                error = "No Google account was found on this phone. Add one in Settings, then try again."
+            } catch (e: GetCredentialException) {
+                Log.e("GoogleSignIn", "type=${e.type} msg=${e.message}", e)
+                googleLoading = false
+                error = "Google sign-in isn't available right now. Please use your email for now."
+            } catch (e: Exception) {
+                Log.e("GoogleSignIn", "unexpected", e)
+                googleLoading = false
+                error = "Something went wrong with Google sign-in. Please try again."
+            }
         }
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
-        contentAlignment = Alignment.Center
-    ) {
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(32.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-            shape = RoundedCornerShape(24.dp)
-        ) {
-            Column(
-                modifier = Modifier.padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(
-                    text = "Welcome Back",
-                    style = MaterialTheme.typography.headlineMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.padding(bottom = 24.dp)
-                )
-
-                OutlinedTextField(
-                    value = email,
-                    onValueChange = { email = it },
-                    label = { Text("Email") },
-                    leadingIcon = { Icon(Icons.Default.Email, contentDescription = null) },
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-                    singleLine = true,
-                    shape = RoundedCornerShape(12.dp)
-                )
-
-                OutlinedTextField(
-                    value = password,
-                    onValueChange = { password = it },
-                    label = { Text("Password") },
-                    leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
-                    visualTransformation = PasswordVisualTransformation(),
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp),
-                    singleLine = true,
-                    shape = RoundedCornerShape(12.dp)
-                )
-
-                Button(
-                    onClick = { 
-                        viewModel.login(email, password, onNavigateToHome, onError = { message ->
-                            Toast.makeText(context, message, Toast.LENGTH_LONG).show()
-                        })
-                    },
-                    modifier = Modifier.fillMaxWidth().height(50.dp),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Text("Login")
+    // Facebook
+    val callbackManager = remember { com.facebook.CallbackManager.Factory.create() }
+    DisposableEffect(Unit) {
+        com.facebook.login.LoginManager.getInstance().registerCallback(
+            callbackManager,
+            object : com.facebook.FacebookCallback<com.facebook.login.LoginResult> {
+                override fun onSuccess(result: com.facebook.login.LoginResult) {
+                    viewModel.socialLogin("facebook", result.accessToken.token, {}, { msg -> error = msg })
                 }
-
-                Spacer(modifier = Modifier.height(16.dp))
-                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-                Spacer(modifier = Modifier.height(16.dp))
-
-                OutlinedButton(
-                    onClick = {
-                        coroutineScope.launch {
-                            try {
-                                val googleIdOption = GetGoogleIdOption.Builder()
-                                    .setFilterByAuthorizedAccounts(false)
-                                    .setServerClientId(context.getString(R.string.default_web_client_id))
-                                    .setAutoSelectEnabled(false)
-                                    .build()
-
-                                val request = GetCredentialRequest.Builder()
-                                    .addCredentialOption(googleIdOption)
-                                    .build()
-
-                                val credentialManager = CredentialManager.create(context)
-                                val result = credentialManager.getCredential(context, request)
-                                
-                                val credential = result.credential
-                                if (credential is com.google.android.libraries.identity.googleid.GoogleIdTokenCredential) {
-                                    val idToken = credential.idToken
-                                    viewModel.socialLogin("google", idToken, onNavigateToHome, { error ->
-                                        Toast.makeText(context, error, Toast.LENGTH_SHORT).show()
-                                    })
-                                } else if (credential is androidx.credentials.CustomCredential && credential.type == com.google.android.libraries.identity.googleid.GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
-                                    val googleIdTokenCredential = com.google.android.libraries.identity.googleid.GoogleIdTokenCredential.createFrom(credential.data)
-                                    val idToken = googleIdTokenCredential.idToken
-                                    viewModel.socialLogin("google", idToken, onNavigateToHome, { error ->
-                                        Toast.makeText(context, error, Toast.LENGTH_SHORT).show()
-                                    })
-                                } else {
-                                    Toast.makeText(context, "Unexpected type of credential", Toast.LENGTH_SHORT).show()
-                                }
-                            } catch (e: Exception) {
-                                e.printStackTrace()
-                                Toast.makeText(context, "Google Sign-In failed: ${e.message}", Toast.LENGTH_SHORT).show()
-                            }
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth().height(50.dp),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Text("Continue with Google")
-                }
-                
-                Spacer(modifier = Modifier.height(12.dp))
-
-                val callbackManager = remember { com.facebook.CallbackManager.Factory.create() }
-                DisposableEffect(Unit) {
-                    com.facebook.login.LoginManager.getInstance().registerCallback(
-                        callbackManager,
-                        object : com.facebook.FacebookCallback<com.facebook.login.LoginResult> {
-                            override fun onSuccess(result: com.facebook.login.LoginResult) {
-                                viewModel.socialLogin("facebook", result.accessToken.token, onNavigateToHome, { err -> 
-                                    Toast.makeText(context, err, Toast.LENGTH_SHORT).show()
-                                })
-                            }
-                            override fun onCancel() {}
-                            override fun onError(error: com.facebook.FacebookException) {
-                                Toast.makeText(context, "Facebook error: ${error.message}", Toast.LENGTH_SHORT).show()
-                            }
-                        }
-                    )
-                    onDispose {
-                        com.facebook.login.LoginManager.getInstance().unregisterCallback(callbackManager)
-                    }
-                }
-                
-                val facebookLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
-                    contract = com.facebook.login.LoginManager.getInstance().createLogInActivityResultContract(callbackManager, null)
-                ) { }
-
-                Button(
-                    onClick = {
-                        facebookLauncher.launch(listOf("email", "public_profile"))
-                    },
-                    modifier = Modifier.fillMaxWidth().height(50.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1877F2))
-                ) {
-                    Text("Continue with Facebook", color = MaterialTheme.colorScheme.onBackground)
-                }
-
-                TextButton(
-                    onClick = onNavigateToRegister,
-                    modifier = Modifier.padding(top = 16.dp)
-                ) {
-                    Text("Don't have an account? Sign up")
-                }
-
-                TextButton(
-                    onClick = onNavigateToForgotPassword,
-                    modifier = Modifier.padding(top = 8.dp)
-                ) {
-                    Text("Forgot Password?")
+                override fun onCancel() {}
+                override fun onError(error2: com.facebook.FacebookException) {
+                    error = "Facebook sign-in didn't work. Please try again."
                 }
             }
+        )
+        onDispose { com.facebook.login.LoginManager.getInstance().unregisterCallback(callbackManager) }
+    }
+    val facebookLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = com.facebook.login.LoginManager.getInstance().createLogInActivityResultContract(callbackManager, null)
+    ) { }
+
+    AuthScaffold(
+        title = "Welcome back",
+        subtitle = "Log in to pick up right where you left off."
+    ) {
+        AuthTextField(
+            value = email,
+            onValueChange = { email = it; error = null },
+            label = "Email",
+            icon = Icons.Default.Email,
+            keyboardType = KeyboardType.Email,
+            imeAction = ImeAction.Next
+        )
+        Spacer(Modifier.height(12.dp))
+        AuthTextField(
+            value = password,
+            onValueChange = { password = it; error = null },
+            label = "Password",
+            icon = Icons.Default.Lock,
+            isPassword = true,
+            imeAction = ImeAction.Done,
+            onDone = { submit() }
+        )
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            TextButton(onClick = onNavigateToForgotPassword) {
+                Text("Forgot password?", color = AuthMuted, fontSize = 14.sp)
+            }
+        }
+
+        ErrorBanner(error)
+        Spacer(Modifier.height(16.dp))
+        PrimaryButton(text = "Log in", loading = loading, onClick = { submit() })
+
+        Spacer(Modifier.height(22.dp))
+        OrDivider()
+        Spacer(Modifier.height(22.dp))
+
+        SocialButton(text = "Continue with Google", light = true, loading = googleLoading, onClick = { signInWithGoogle() })
+        Spacer(Modifier.height(12.dp))
+        SocialButton(text = "Continue with Facebook", onClick = {
+            error = null
+            facebookLauncher.launch(listOf("email", "public_profile"))
+        })
+
+        Spacer(Modifier.height(28.dp))
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+            Text("New to Pulse? ", color = AuthMuted, fontSize = 15.sp)
+            Text(
+                "Create an account",
+                color = MaterialTheme.colorScheme.primary,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.clickable(onClick = onNavigateToRegister).padding(vertical = 8.dp)
+            )
         }
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RegisterScreen(
     onNavigateToHome: () -> Unit,
@@ -220,137 +202,123 @@ fun RegisterScreen(
     var password by remember { mutableStateOf("") }
     var code by remember { mutableStateOf("") }
     var step by remember { mutableStateOf(0) }
-    var isLoading by remember { mutableStateOf(false) }
-    val context = LocalContext.current
+    var loading by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var cooldown by remember { mutableStateOf(0) }
+    val focus = LocalFocusManager.current
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
-        contentAlignment = Alignment.Center
-    ) {
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(32.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-            shape = RoundedCornerShape(24.dp)
-        ) {
-            Column(
-                modifier = Modifier.padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(
-                    text = "Create Account",
-                    style = MaterialTheme.typography.headlineMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.padding(bottom = 24.dp)
-                )
+    // counts down the "resend code" wait
+    LaunchedEffect(cooldown) {
+        if (cooldown > 0) {
+            delay(1000)
+            cooldown -= 1
+        }
+    }
 
-                if (step == 0) {
-                    OutlinedTextField(
-                        value = username,
-                        onValueChange = { username = it },
-                        label = { Text("Username") },
-                        leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) },
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-                        singleLine = true,
-                        shape = RoundedCornerShape(12.dp)
-                    )
-
-                    OutlinedTextField(
-                        value = email,
-                        onValueChange = { email = it },
-                        label = { Text("Email") },
-                        leadingIcon = { Icon(Icons.Default.Email, contentDescription = null) },
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-                        singleLine = true,
-                        shape = RoundedCornerShape(12.dp)
-                    )
-
-                    OutlinedTextField(
-                        value = password,
-                        onValueChange = { password = it },
-                        label = { Text("Password") },
-                        leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
-                        visualTransformation = PasswordVisualTransformation(),
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp),
-                        singleLine = true,
-                        shape = RoundedCornerShape(12.dp)
-                    )
-
-                    Button(
-                        onClick = { 
-                            if (email.isNotBlank() && password.isNotBlank() && username.isNotBlank()) {
-                                isLoading = true
-                                viewModel.requestRegisterOtp(email) { msg ->
-                                    isLoading = false
-                                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
-                                    if (msg.contains("sent", ignoreCase = true)) {
-                                        step = 1
-                                    }
-                                }
-                            } else {
-                                Toast.makeText(context, "Please fill all fields", Toast.LENGTH_SHORT).show()
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth().height(50.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        enabled = !isLoading
-                    ) {
-                        Text(if (isLoading) "Sending Code..." else "Continue")
+    fun sendCode() {
+        focus.clearFocus()
+        val e = email.trim()
+        when {
+            username.isBlank() -> error = "Choose a username."
+            !android.util.Patterns.EMAIL_ADDRESS.matcher(e).matches() -> error = "Enter a valid email address."
+            password.length < 6 -> error = "Use at least 6 characters for your password."
+            else -> {
+                error = null
+                loading = true
+                viewModel.requestRegisterOtp(e) { msg ->
+                    loading = false
+                    if (msg.contains("sent", ignoreCase = true)) {
+                        step = 1
+                        cooldown = 45
+                        code = ""
+                    } else {
+                        error = msg
                     }
-                } else {
-                    Text(
-                        text = "We sent a 6-digit code to $email",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                        modifier = Modifier.padding(bottom = 24.dp)
-                    )
-                    
-                    OutlinedTextField(
-                        value = code,
-                        onValueChange = { code = it },
-                        label = { Text("6-Digit Code") },
-                        leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp),
-                        singleLine = true,
-                        shape = RoundedCornerShape(12.dp),
-                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number)
-                    )
-
-                    Button(
-                        onClick = { 
-                            if (code.isNotBlank()) {
-                                isLoading = true
-                                viewModel.register(username, email, password, code, onNavigateToHome, onError = { errorMsg ->
-                                    isLoading = false
-                                    Toast.makeText(context, errorMsg, Toast.LENGTH_SHORT).show()
-                                }) 
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth().height(50.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        enabled = !isLoading
-                    ) {
-                        Text(if (isLoading) "Verifying..." else "Verify & Sign Up")
-                    }
-                    
-                    TextButton(
-                        onClick = { step = 0 },
-                        modifier = Modifier.padding(top = 8.dp)
-                    ) {
-                        Text("Back")
-                    }
-                }
-
-                TextButton(
-                    onClick = onNavigateToLogin,
-                    modifier = Modifier.padding(top = 16.dp)
-                ) {
-                    Text("Already have an account? Login")
                 }
             }
+        }
+    }
+
+    fun verify() {
+        focus.clearFocus()
+        if (code.length != 6) {
+            error = "Enter the 6-digit code from your email."
+            return
+        }
+        error = null
+        loading = true
+        viewModel.register(username.trim(), email.trim(), password, code, onNavigateToHome) { msg ->
+            loading = false
+            error = msg
+        }
+    }
+
+    AuthScaffold(
+        title = if (step == 0) "Create your account" else "Check your email",
+        subtitle = if (step == 0) "It takes under a minute." else "We sent a 6-digit code to ${email.trim()}.",
+        onBack = if (step == 1) ({ step = 0; error = null }) else null
+    ) {
+        StepBars(current = step, total = 2)
+
+        if (step == 0) {
+            AuthTextField(
+                value = username,
+                onValueChange = { username = it; error = null },
+                label = "Username",
+                icon = Icons.Default.Person
+            )
+            Spacer(Modifier.height(12.dp))
+            AuthTextField(
+                value = email,
+                onValueChange = { email = it; error = null },
+                label = "Email",
+                icon = Icons.Default.Email,
+                keyboardType = KeyboardType.Email
+            )
+            Spacer(Modifier.height(12.dp))
+            AuthTextField(
+                value = password,
+                onValueChange = { password = it; error = null },
+                label = "Password (6+ characters)",
+                icon = Icons.Default.Lock,
+                isPassword = true,
+                imeAction = ImeAction.Done,
+                onDone = { sendCode() }
+            )
+            ErrorBanner(error)
+            Spacer(Modifier.height(20.dp))
+            PrimaryButton(text = "Send me a code", loading = loading, onClick = { sendCode() })
+        } else {
+            CodeField(value = code, onValueChange = { code = it; error = null }, onDone = { verify() })
+            ErrorBanner(error)
+            Spacer(Modifier.height(20.dp))
+            PrimaryButton(text = "Verify and sign up", loading = loading, onClick = { verify() })
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                TextButton(
+                    enabled = cooldown == 0 && !loading,
+                    onClick = {
+                        loading = true
+                        viewModel.requestRegisterOtp(email.trim()) { msg ->
+                            loading = false
+                            if (msg.contains("sent", ignoreCase = true)) cooldown = 45 else error = msg
+                        }
+                    }
+                ) {
+                    Text(if (cooldown > 0) "Resend code in ${cooldown}s" else "Resend code", color = AuthMuted)
+                }
+            }
+        }
+
+        Spacer(Modifier.height(20.dp))
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+            Text("Already have an account? ", color = AuthMuted, fontSize = 15.sp)
+            Text(
+                "Log in",
+                color = MaterialTheme.colorScheme.primary,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.clickable(onClick = onNavigateToLogin).padding(vertical = 8.dp)
+            )
         }
     }
 }

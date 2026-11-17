@@ -31,6 +31,7 @@ class NowPlayingViewModel @Inject constructor(
 
     val currentSong: StateFlow<Song?> = musicPlayerManager.currentSong
     val isPlaying: StateFlow<Boolean> = musicPlayerManager.isPlaying
+    val isBuffering: StateFlow<Boolean> = musicPlayerManager.isBuffering
     val currentPosition: StateFlow<Long> = musicPlayerManager.currentPosition
     val duration: StateFlow<Long> = musicPlayerManager.duration
     val shuffleEnabled: StateFlow<Boolean> = musicPlayerManager.shuffleEnabled

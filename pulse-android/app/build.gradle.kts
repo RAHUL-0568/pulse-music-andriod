@@ -26,6 +26,19 @@ android {
         buildConfigField("String", "API_BASE_URL", "\"${localProps.getProperty("API_BASE_URL", "https://api.pulsemusic.app/")}\"")
     }
 
+    // One permanent key for every build. Without it each CI build was signed with a new random
+    // debug key, and Google Sign-In (which is tied to the signing key's SHA-1) could never work.
+    // This is a debug-grade key, not a Play Store release key.
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("pulse-debug.p12")
+            storeType = "pkcs12"
+            storePassword = "pulsedebug"
+            keyAlias = "pulse"
+            keyPassword = "pulsedebug"
+        }
+    }
+
     buildFeatures {
         compose = true
         buildConfig = true
