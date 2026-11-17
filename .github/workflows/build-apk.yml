@@ -25,7 +25,7 @@ jobs:
       - name: Point the app at the backend
         working-directory: pulse-android
         env:
-          API: ${{ inputs.api_base_url || vars.API_BASE_URL || 'https://web-frontend-rho-six.vercel.app/' }}
+          API: ${{ inputs.api_base_url || vars.API_BASE_URL || 'https://130-210-39-184.sslip.io/' }}
         run: echo "API_BASE_URL=$API" > local.properties
 
       - name: Build
@@ -44,5 +44,6 @@ jobs:
         with:
           name: pulse-debug-apk
           path: pulse-android/app/build/outputs/apk/debug/*.apk
+
 
 
