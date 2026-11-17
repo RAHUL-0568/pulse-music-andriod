@@ -36,7 +36,7 @@ jobs:
           ./gradlew assembleDebug --no-daemon 2>&1 | tee build.log
           code=${PIPESTATUS[0]}
           if [ "$code" -ne 0 ]; then
-            grep -E '^e: |error:|What went wrong|Execution failed|Could not |FAILED|Unresolved|Duplicate' build.log | head -30 | sed 's/%/%25/g' | while IFS= read -r line; do echo "::error title=build::${line:0:400}"; done
+            grep -E -A5 '^e: |error:|What went wrong|Could not |Unresolved|Duplicate' build.log | head -45 | sed 's/%/%25/g' | while IFS= read -r line; do echo "::error title=build::${line:0:400}"; done
           fi
           exit $code
 
