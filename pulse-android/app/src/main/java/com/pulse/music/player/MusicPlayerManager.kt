@@ -91,8 +91,20 @@ class MusicPlayerManager @Inject constructor(
 
                         // This runs on ExoPlayer's loader thread, not the main thread.
                         val dummySong = Song(id = songId, title = title, artist = artist, album = "", albumArt = "", durationMs = null, source = "online")
-                        val resolvedUrl = kotlinx.coroutines.runBlocking { resolveSongSource(dummySong) }
-                        if (resolvedUrl != "online") {
+                        // Skipping fast makes ExoPlayer cancel this load: the interrupt must surface as a
+                        // normal IO cancel, not as a crash that leaves the player stuck in an error state.
+                        val resolvedUrl = try {
+                            kotlinx.coroutines.runBlocking { resolveSongSource(dummySong) }
+                        } catch (e: InterruptedException) {
+                            Thread.currentThread().interrupt()
+                            throw java.io.InterruptedIOException("Song lookup cancelled")
+                        }
+                        // No stream found: fail cleanly (the player retries / skips on its own)
+                        // instead of passing a pulse:// address that no data source understands.
+                        if (resolvedUrl == "online" || resolvedUrl.startsWith("pulse://")) {
+                            throw java.io.IOException("Could not find a stream for this song")
+                        }
+                        run {
                             return dataSpec.buildUpon()
                                 .setUri(android.net.Uri.parse(resolvedUrl))
                                 .setKey(cacheKey)
@@ -597,12 +609,33 @@ class MusicPlayerManager @Inject constructor(
             }
         }
         
+        // The song we already retried once after an error (so we never loop forever)
+        private var errorRetrySongId: String? = null
+
         override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
             if (targetPlayer !== player) return
             super.onPlayerError(error)
-            error.printStackTrace()
+            android.util.Log.e("MusicPlayerManager", "Playback error: ${error.errorCodeName}", error)
+
+            // After an error ExoPlayer goes idle and plays nothing until we prepare it again.
+            // This is why one failed lookup while skipping fast stopped every following song.
+            val songId = player.currentMediaItem?.mediaId
+            if (songId != null) resolvedUrlCache.remove(songId) // look the stream up fresh
+
+            if (songId != null && errorRetrySongId != songId) {
+                errorRetrySongId = songId
+                player.prepare() // retry this song once
+                return
+            }
+            errorRetrySongId = null
+            if (player.hasNextMediaItem()) {
+                player.seekToNextMediaItem() // still failing: move on to the next song
+                player.prepare()
+                player.play()
+                return
+            }
             android.os.Handler(android.os.Looper.getMainLooper()).post {
-                android.widget.Toast.makeText(context, "Playback Error: ${error.message}", android.widget.Toast.LENGTH_LONG).show()
+                android.widget.Toast.makeText(context, "Couldn't play this song. Check your connection and try again.", android.widget.Toast.LENGTH_LONG).show()
             }
         }
         
@@ -683,6 +716,7 @@ class MusicPlayerManager @Inject constructor(
         override fun onPlaybackStateChanged(playbackState: Int) {
             if (playbackState == Player.STATE_READY) {
                 _duration.value = player.duration.coerceAtLeast(0L)
+                errorRetrySongId = null // this song loaded fine, so a future error gets a fresh retry
             } else if (playbackState == Player.STATE_ENDED) {
                 if (_sleepTimerMode.value == SleepTimerMode.END_OF_TRACK) {
                     _sleepTimerMode.value = SleepTimerMode.OFF
