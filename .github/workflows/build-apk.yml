@@ -32,10 +32,17 @@ jobs:
         working-directory: pulse-android
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon --stacktrace
+          set +e
+          ./gradlew assembleDebug --no-daemon 2>&1 | tee build.log
+          code=${PIPESTATUS[0]}
+          if [ "$code" -ne 0 ]; then
+            grep -E '^e: |error:|What went wrong|Execution failed|Could not |FAILED|Unresolved|Duplicate' build.log | head -30 | sed 's/%/%25/g' | while IFS= read -r line; do echo "::error title=build::${line:0:400}"; done
+          fi
+          exit $code
 
       - uses: actions/upload-artifact@v4
         with:
           name: pulse-debug-apk
           path: pulse-android/app/build/outputs/apk/debug/*.apk
+
 
