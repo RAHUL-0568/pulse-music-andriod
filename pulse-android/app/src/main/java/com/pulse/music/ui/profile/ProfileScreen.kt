@@ -1,9 +1,14 @@
 package com.pulse.music.ui.profile
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -15,117 +20,97 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.pulse.music.ui.auth.AuthViewModel
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import coil.compose.AsyncImage
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.foundation.clickable
-import androidx.compose.ui.platform.LocalContext
+import com.pulse.music.data.network.MusicCapsuleArtist
+import com.pulse.music.data.network.MusicCapsuleResponse
+import com.pulse.music.data.network.MusicCapsuleSong
+import com.pulse.music.ui.auth.AuthViewModel
 import kotlinx.coroutines.launch
 
-@OptIn(ExperimentalMaterial3Api::class)
+// True-black look: near-black cards with hairline borders, one red accent.
+private val Muted = Color(0xFF9A9A9A)
+private val CardBg = Color(0xFF0F0F0F)
+private val CardBorder = Color(0xFF1F1F1F)
+private val Accent = Color(0xFFF92839)
+
 @Composable
 fun ProfileScreen(
     onNavigateToAuth: () -> Unit,
-    viewModel: AuthViewModel = hiltViewModel()
+    viewModel: AuthViewModel = hiltViewModel(),
+    profileViewModel: ProfileViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
     val token by viewModel.token.collectAsState()
     val username by viewModel.username.collectAsState()
     val email by viewModel.email.collectAsState()
     val profilePicUri by viewModel.profilePicUri.collectAsState()
-    
+
     val highQuality by viewModel.highQuality.collectAsState()
     val spatialAudio by viewModel.spatialAudio.collectAsState()
     val gapless by viewModel.gapless.collectAsState()
     val crossfade by viewModel.crossfade.collectAsState()
 
-    val capsuleState by viewModel.capsuleState.collectAsState()
-    var showCapsule by remember { mutableStateOf(false) }
+    val likedCount by profileViewModel.likedCount.collectAsState()
+    val playlistCount by profileViewModel.playlistCount.collectAsState()
+    val followingCount by profileViewModel.followingCount.collectAsState()
+    val listening by profileViewModel.listening.collectAsState()
 
-    val isLastDayOfMonth = remember {
-        val calendar = java.util.Calendar.getInstance()
-        val today = calendar.get(java.util.Calendar.DAY_OF_MONTH)
-        val lastDay = calendar.getActualMaximum(java.util.Calendar.DAY_OF_MONTH)
-        today == lastDay
-    }
-    
-    // Image picker launcher
-    val launcher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri ->
+    var showLogoutConfirm by remember { mutableStateOf(false) }
+
+    val launcher = rememberLauncherForActivityResult(contract = ActivityResultContracts.GetContent()) { uri ->
         uri?.let { viewModel.uploadProfilePic(context, it.toString()) }
     }
-    
-    // If user somehow logs out, go to auth
+
+    // Logging out (or being logged out) sends us back to the login page
     LaunchedEffect(token) {
-        if (token.isNullOrEmpty()) {
-            onNavigateToAuth()
-        }
+        if (token.isNullOrEmpty()) onNavigateToAuth()
     }
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background
-    ) { paddingValues ->
+    Scaffold(containerColor = MaterialTheme.colorScheme.background) { paddingValues ->
         LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-                .padding(horizontal = 16.dp),
-            contentPadding = PaddingValues(top = 24.dp, bottom = 140.dp),
-            verticalArrangement = Arrangement.spacedBy(24.dp)
+            modifier = Modifier.fillMaxSize().padding(paddingValues),
+            contentPadding = PaddingValues(bottom = 140.dp)
         ) {
-            item { 
-                ProfileHero(
-                    username = username ?: "User", 
-                    email = email ?: "user@example.com",
+            item {
+                ProfileHeader(
+                    username = username?.takeIf { it.isNotBlank() } ?: "Music lover",
+                    email = email ?: "",
                     profilePicUri = profilePicUri,
                     onEditProfilePic = { launcher.launch("image/*") }
-                ) 
+                )
             }
-            if (isLastDayOfMonth) {
-                item {
-                    Button(
-                        onClick = {
-                            viewModel.fetchMusicCapsule()
-                            showCapsule = true
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(64.dp)
-                            .clip(RoundedCornerShape(24.dp))
-                            .background(
-                                brush = Brush.horizontalGradient(
-                                    colors = listOf(Color(0xFFFF4081), Color(0xFF7C4DFF))
-                                )
-                            ),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
-                        shape = RoundedCornerShape(24.dp)
-                    ) {
-                        Icon(Icons.Default.Star, contentDescription = null, tint = Color.White, modifier = Modifier.size(28.dp))
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Text("View Your Music Capsule", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                    }
-                }
+            item { StatsRow(likedCount, playlistCount, followingCount) }
+
+            item { SectionLabel("Your listening") }
+            item {
+                ListeningSection(
+                    state = listening,
+                    onRetry = { profileViewModel.loadListening() },
+                    onPlaySong = { song, all -> profileViewModel.playTopSong(song, all) }
+                )
             }
-            item { 
+
+            item { SectionLabel("Playback") }
+            item {
                 PlaybackSettings(
                     highQuality = highQuality,
                     spatialAudio = spatialAudio,
                     gapless = gapless,
                     crossfade = crossfade,
-                    onUpdate = { hq, sa, gp, cf -> 
-                        viewModel.updatePlaybackSettings(hq, sa, gp, cf)
-                    }
-                ) 
+                    onUpdate = { hq, sa, gp, cf -> viewModel.updatePlaybackSettings(hq, sa, gp, cf) }
+                )
             }
+
+            item { SectionLabel("Storage") }
             item {
                 StorageSettings(onClearCache = {
                     com.pulse.music.ui.home.HomeViewModel.cachedUiState = null
@@ -141,78 +126,341 @@ fun ProfileScreen(
                     }
                 })
             }
+
+            item { SectionLabel("App") }
+            item { AppUpdates(context = context) }
+
+            item { SectionLabel("Account") }
+            item { LogoutRow(onClick = { showLogoutConfirm = true }) }
+
             item {
-                AppUpdates(context = context)
-            }
-            item {
-                AccountActions(onLogout = { viewModel.logout() })
+                Box(modifier = Modifier.fillMaxWidth().padding(top = 36.dp), contentAlignment = Alignment.Center) {
+                    Text(
+                        "Pulse Music  ·  v" + com.pulse.music.BuildConfig.VERSION_NAME,
+                        color = Color(0xFF5E5E5E),
+                        fontSize = 12.sp
+                    )
+                }
             }
         }
-        if (showCapsule && capsuleState != null) {
-            MusicCapsuleDialog(
-                capsule = capsuleState!!,
-                onDismiss = { showCapsule = false }
+
+        if (showLogoutConfirm) {
+            AlertDialog(
+                onDismissRequest = { showLogoutConfirm = false },
+                containerColor = Color(0xFF141414),
+                title = { Text("Log out?", color = Color.White, fontWeight = FontWeight.Bold) },
+                text = { Text("You'll need to sign in again to use Pulse.", color = Muted) },
+                confirmButton = {
+                    TextButton(onClick = { showLogoutConfirm = false; viewModel.logout() }) {
+                        Text("Log out", color = Accent, fontWeight = FontWeight.SemiBold)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showLogoutConfirm = false }) { Text("Cancel", color = Color.White) }
+                }
             )
         }
     }
 }
 
+// ───────────────────────── header + stats ─────────────────────────
+
 @Composable
-private fun ProfileHero(username: String, email: String, profilePicUri: String?, onEditProfilePic: () -> Unit) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 24.dp)
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-            Box(
-                modifier = Modifier
-                    .size(100.dp)
-                    .clip(CircleShape)
-                    .background(Color.DarkGray)
-                    .clickable { onEditProfilePic() },
-                contentAlignment = Alignment.Center
-            ) {
-                if (profilePicUri.isNullOrEmpty()) {
-                    Icon(Icons.Default.Person, contentDescription = "Profile", tint = MaterialTheme.colorScheme.onBackground, modifier = Modifier.size(50.dp))
-                } else {
-                    android.util.Log.d("ProfileScreen", "Loading profile pic from: $profilePicUri")
-                    AsyncImage(
-                        model = coil.request.ImageRequest.Builder(LocalContext.current)
-                            .data(profilePicUri)
-                            .crossfade(true)
-                            .listener(
-                                onError = { _, result ->
-                                    android.util.Log.e("ProfileScreen", "Failed to load profile pic: ${result.throwable.message}", result.throwable)
-                                },
-                                onSuccess = { _, _ ->
-                                    android.util.Log.d("ProfileScreen", "Profile pic loaded successfully")
-                                }
-                            )
-                            .build(),
-                        contentDescription = "Profile Picture",
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
-                    )
-                }
-                
-                // Edit icon overlay
+private fun ProfileHeader(username: String, email: String, profilePicUri: String?, onEditProfilePic: () -> Unit) {
+    Box(modifier = Modifier.fillMaxWidth()) {
+        // soft red glow behind the avatar
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(260.dp)
+                .background(Brush.verticalGradient(listOf(Accent.copy(alpha = 0.22f), Color.Transparent)))
+        )
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.fillMaxWidth().padding(top = 40.dp, bottom = 8.dp, start = 24.dp, end = 24.dp)
+        ) {
+            Box(modifier = Modifier.size(112.dp).clickable { onEditProfilePic() }) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.background.copy(alpha = 0.3f)),
+                        .padding(4.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFF1A1A1A))
+                        .border(3.dp, Brush.sweepGradient(listOf(Accent, Color(0xFFFF8A5B), Accent)), CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Default.Edit, contentDescription = "Edit Profile Picture", tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f), modifier = Modifier.size(24.dp))
+                    if (profilePicUri.isNullOrEmpty()) {
+                        Text(
+                            text = username.firstOrNull()?.uppercaseChar()?.toString() ?: "P",
+                            color = Color.White,
+                            fontSize = 40.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    } else {
+                        AsyncImage(
+                            model = coil.request.ImageRequest.Builder(LocalContext.current).data(profilePicUri).crossfade(true).build(),
+                            contentDescription = "Profile picture",
+                            modifier = Modifier.fillMaxSize().clip(CircleShape),
+                            contentScale = ContentScale.Crop
+                        )
+                    }
+                }
+                // camera badge
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .size(34.dp)
+                        .clip(CircleShape)
+                        .background(Accent)
+                        .border(2.dp, Color.Black, CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.CameraAlt, contentDescription = "Change photo", tint = Color.White, modifier = Modifier.size(17.dp))
                 }
             }
-            
-            Spacer(modifier = Modifier.height(16.dp))
-            
-            Text(username, color = MaterialTheme.colorScheme.onBackground, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-            Text(email, color = Color.Gray, fontSize = 14.sp, modifier = Modifier.padding(top = 4.dp))
+            Spacer(Modifier.height(16.dp))
+            Text(username, color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (email.isNotBlank()) {
+                Text(email, color = Muted, fontSize = 14.sp, modifier = Modifier.padding(top = 2.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
         }
     }
+}
+
+@Composable
+private fun StatsRow(liked: Int, playlists: Int, following: Int) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 16.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .background(CardBg)
+            .border(1.dp, CardBorder, RoundedCornerShape(18.dp))
+            .padding(vertical = 18.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        StatItem(liked.toString(), "Liked songs", Modifier.weight(1f))
+        Box(Modifier.width(1.dp).height(32.dp).background(CardBorder))
+        StatItem(playlists.toString(), "Playlists", Modifier.weight(1f))
+        Box(Modifier.width(1.dp).height(32.dp).background(CardBorder))
+        StatItem(following.toString(), "Following", Modifier.weight(1f))
+    }
+}
+
+@Composable
+private fun StatItem(value: String, label: String, modifier: Modifier = Modifier) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = modifier) {
+        Text(value, color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+        Text(label, color = Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp))
+    }
+}
+
+@Composable
+private fun SectionLabel(text: String) {
+    Text(
+        text = text,
+        color = Color.White,
+        fontSize = 20.sp,
+        fontWeight = FontWeight.Bold,
+        modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 24.dp, bottom = 12.dp)
+    )
+}
+
+// ───────────────────────── listening stats ─────────────────────────
+
+@Composable
+private fun ListeningSection(
+    state: ListeningState,
+    onRetry: () -> Unit,
+    onPlaySong: (MusicCapsuleSong, List<MusicCapsuleSong>) -> Unit
+) {
+    when (state) {
+        is ListeningState.Loading -> {
+            SoftCard {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    repeat(3) {
+                        Box(Modifier.fillMaxWidth(if (it == 0) 0.5f else 0.9f).height(16.dp).clip(RoundedCornerShape(6.dp)).background(Color(0xFF1C1C1C)))
+                    }
+                }
+            }
+        }
+        is ListeningState.Empty -> {
+            SoftCard {
+                Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(Icons.Default.GraphicEq, contentDescription = null, tint = Accent, modifier = Modifier.size(36.dp))
+                    Spacer(Modifier.height(12.dp))
+                    Text("Nothing here yet", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "Play a few songs and your top artists and songs will show up here.",
+                        color = Muted, fontSize = 13.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+            }
+        }
+        is ListeningState.Failed -> {
+            SoftCard {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Couldn't load your stats.", color = Muted, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                    TextButton(onClick = onRetry) { Text("Retry", color = Accent, fontWeight = FontWeight.SemiBold) }
+                }
+            }
+        }
+        is ListeningState.Ready -> ListeningReady(state.data, onPlaySong)
+    }
+}
+
+@Composable
+private fun ListeningReady(data: MusicCapsuleResponse, onPlaySong: (MusicCapsuleSong, List<MusicCapsuleSong>) -> Unit) {
+    Column {
+        // two big numbers
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            BigNumberCard(data.totalPlays.toString(), "Total plays", Modifier.weight(1f))
+            BigNumberCard(data.uniqueSongs.toString(), "Different songs", Modifier.weight(1f))
+        }
+
+        if (data.topArtists.isNotEmpty()) {
+            Text("Top artists", color = Muted, fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(start = 20.dp, top = 20.dp, bottom = 12.dp))
+            LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                items(data.topArtists.take(8)) { artist -> TopArtistItem(artist) }
+            }
+        }
+
+        if (data.topSongs.isNotEmpty()) {
+            Text("Top songs", color = Muted, fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(start = 20.dp, top = 20.dp, bottom = 8.dp))
+            val songs = data.topSongs.take(5)
+            SoftCard {
+                Column {
+                    songs.forEachIndexed { index, song ->
+                        TopSongRow(rank = index + 1, song = song, onClick = { onPlaySong(song, songs) })
+                        if (index != songs.lastIndex) HorizontalDivider(color = CardBorder, modifier = Modifier.padding(start = 76.dp))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BigNumberCard(value: String, label: String, modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(18.dp))
+            .background(CardBg)
+            .border(1.dp, CardBorder, RoundedCornerShape(18.dp))
+            .padding(18.dp)
+    ) {
+        Text(value, color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Bold)
+        Text(label, color = Muted, fontSize = 13.sp, modifier = Modifier.padding(top = 2.dp))
+    }
+}
+
+@Composable
+private fun TopArtistItem(artist: MusicCapsuleArtist) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(84.dp)) {
+        Box(
+            modifier = Modifier.size(84.dp).clip(CircleShape).background(Color(0xFF1A1A1A)),
+            contentAlignment = Alignment.Center
+        ) {
+            if (!artist.image.isNullOrBlank()) {
+                AsyncImage(model = artist.image, contentDescription = artist.name, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+            } else {
+                Text(artist.name.firstOrNull()?.uppercaseChar()?.toString() ?: "?", color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+        Text(artist.name, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 8.dp))
+        Text("${artist.playCount} plays", color = Muted, fontSize = 11.sp)
+    }
+}
+
+@Composable
+private fun TopSongRow(rank: Int, song: MusicCapsuleSong, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(rank.toString(), color = if (rank == 1) Accent else Muted, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(24.dp))
+        Box(modifier = Modifier.size(48.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFF1A1A1A)), contentAlignment = Alignment.Center) {
+            if (song.albumArt.isNotBlank()) {
+                AsyncImage(model = song.albumArt, contentDescription = song.title, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+            } else {
+                Icon(Icons.Default.MusicNote, contentDescription = null, tint = Muted)
+            }
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(song.title, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(song.artist, color = Muted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        Spacer(Modifier.width(8.dp))
+        Text("${song.playCount}×", color = Muted, fontSize = 13.sp)
+    }
+}
+
+// ───────────────────────── settings ─────────────────────────
+
+@Composable
+private fun SoftCard(content: @Composable ColumnScope.() -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .background(CardBg)
+            .border(1.dp, CardBorder, RoundedCornerShape(18.dp)),
+        content = content
+    )
+}
+
+@Composable
+private fun SettingRow(
+    icon: ImageVector,
+    title: String,
+    description: String? = null,
+    onClick: (() -> Unit)? = null,
+    tint: Color = Accent,
+    trailing: @Composable (() -> Unit)? = null
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier.size(38.dp).clip(RoundedCornerShape(11.dp)).background(Color(0xFF181818)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(20.dp))
+        }
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+            if (description != null) Text(description, color = Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp))
+        }
+        if (trailing != null) {
+            Spacer(Modifier.width(12.dp))
+            trailing()
+        }
+    }
+}
+
+@Composable
+private fun PulseSwitch(checked: Boolean, onChange: (Boolean) -> Unit) {
+    Switch(
+        checked = checked,
+        onCheckedChange = onChange,
+        colors = SwitchDefaults.colors(
+            checkedThumbColor = Color.White,
+            checkedTrackColor = Accent,
+            uncheckedThumbColor = Color(0xFF8A8A8A),
+            uncheckedTrackColor = Color(0xFF1F1F1F),
+            uncheckedBorderColor = Color(0xFF2E2E2E)
+        )
+    )
 }
 
 @Composable
@@ -223,128 +471,85 @@ private fun PlaybackSettings(
     crossfade: Int,
     onUpdate: (Boolean, Boolean, Boolean, Int) -> Unit
 ) {
-    Column {
-        Text("Playback", color = MaterialTheme.colorScheme.onBackground, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 16.dp))
-        SettingsCard {
-            SettingRow(
-                icon = Icons.Default.HighQuality, 
-                title = "High Quality Streaming", 
-                description = "Always stream at 320kbps",
-                trailing = { Switch(checked = highQuality, onCheckedChange = { onUpdate(it, spatialAudio, gapless, crossfade) }, colors = SwitchDefaults.colors(checkedThumbColor = Color(0xFFF92839), checkedTrackColor = Color(0xFFF92839).copy(alpha = 0.5f))) }
-            )
-            HorizontalDivider(color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.05f))
-            SettingRow(
-                icon = Icons.Default.Headphones, 
-                title = "Spatial Audio", 
-                description = "Enable immersive soundstage",
-                trailing = { Switch(checked = spatialAudio, onCheckedChange = { onUpdate(highQuality, it, gapless, crossfade) }, colors = SwitchDefaults.colors(checkedThumbColor = Color(0xFFF92839), checkedTrackColor = Color(0xFFF92839).copy(alpha = 0.5f))) }
-            )
-            HorizontalDivider(color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.05f))
-            SettingRow(
-                icon = Icons.Default.SkipNext, 
-                title = "Gapless Playback", 
-                description = "Eliminate pauses between tracks",
-                trailing = { Switch(checked = gapless, onCheckedChange = { onUpdate(highQuality, spatialAudio, it, crossfade) }, colors = SwitchDefaults.colors(checkedThumbColor = Color(0xFFF92839), checkedTrackColor = Color(0xFFF92839).copy(alpha = 0.5f))) }
-            )
-            HorizontalDivider(color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.05f))
-            Column(modifier = Modifier.padding(16.dp)) {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Crossfade", color = MaterialTheme.colorScheme.onBackground, fontSize = 15.sp, fontWeight = FontWeight.Medium)
-                    Text("${crossfade}s", color = Color(0xFFF92839), fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                }
-                Slider(
-                    value = crossfade.toFloat(),
-                    onValueChange = { onUpdate(highQuality, spatialAudio, gapless, it.toInt()) },
-                    valueRange = 0f..12f,
-                    steps = 11,
-                    colors = SliderDefaults.colors(thumbColor = Color(0xFFF92839), activeTrackColor = Color(0xFFF92839))
+    SoftCard {
+        SettingRow(
+            icon = Icons.Default.HighQuality,
+            title = "High quality",
+            description = "Best sound on Wi-Fi. Mobile data always uses data saver.",
+            trailing = { PulseSwitch(highQuality) { onUpdate(it, spatialAudio, gapless, crossfade) } }
+        )
+        HorizontalDivider(color = CardBorder)
+        SettingRow(
+            icon = Icons.Default.Headphones,
+            title = "Spatial audio",
+            description = "Wider, more immersive sound",
+            trailing = { PulseSwitch(spatialAudio) { onUpdate(highQuality, it, gapless, crossfade) } }
+        )
+        HorizontalDivider(color = CardBorder)
+        SettingRow(
+            icon = Icons.Default.SkipNext,
+            title = "Gapless playback",
+            description = "No pause between songs",
+            trailing = { PulseSwitch(gapless) { onUpdate(highQuality, spatialAudio, it, crossfade) } }
+        )
+        HorizontalDivider(color = CardBorder)
+        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text("Crossfade", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                Text(if (crossfade == 0) "Off" else "${crossfade}s", color = Accent, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+            }
+            Slider(
+                value = crossfade.toFloat(),
+                onValueChange = { onUpdate(highQuality, spatialAudio, gapless, it.toInt()) },
+                valueRange = 0f..12f,
+                steps = 11,
+                colors = SliderDefaults.colors(
+                    thumbColor = Color.White,
+                    activeTrackColor = Accent,
+                    inactiveTrackColor = Color(0xFF262626)
                 )
-            }
+            )
         }
     }
 }
 
 @Composable
-private fun PremiumCard() {
-    val premiumBrush = Brush.linearGradient(
-        colors = listOf(Color(0xFFF59E0B).copy(alpha = 0.2f), Color(0xFFEF4444).copy(alpha = 0.2f))
-    )
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(24.dp))
-            .background(premiumBrush)
-            .border(1.dp, Color(0xFFF59E0B).copy(alpha = 0.3f), RoundedCornerShape(24.dp))
-            .padding(24.dp)
-    ) {
-        Column {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Star, contentDescription = null, tint = Color(0xFFFBBF24), modifier = Modifier.size(28.dp))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("ListenFree Premium", color = MaterialTheme.colorScheme.onBackground, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-            }
-            Spacer(modifier = Modifier.height(12.dp))
-            Text("Enjoy ad-free music listening, offline playback, and highest audio quality.", color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f), fontSize = 14.sp)
-            Spacer(modifier = Modifier.height(20.dp))
-            Button(
-                onClick = { },
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF59E0B), contentColor = MaterialTheme.colorScheme.background),
-                shape = RoundedCornerShape(50)
-            ) {
-                Text("Manage Subscription", fontWeight = FontWeight.Bold)
-            }
-        }
-    }
-}
+private fun StorageSettings(onClearCache: () -> Unit) {
+    val context = LocalContext.current
+    var cacheSizeMb by remember { mutableStateOf(0f) }
+    val scope = rememberCoroutineScope()
 
-@Composable
-private fun SettingsCard(content: @Composable ColumnScope.() -> Unit) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
-            .background(MaterialTheme.colorScheme.onBackground.copy(alpha = 0.05f))
-            .border(1.dp, MaterialTheme.colorScheme.onBackground.copy(alpha = 0.1f), RoundedCornerShape(20.dp))
-    ) {
-        Column(modifier = Modifier.padding(8.dp), content = content)
-    }
-}
-
-@Composable
-private fun SettingRow(
-    icon: ImageVector,
-    title: String,
-    description: String? = null,
-    trailing: @Composable (() -> Unit)? = null
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier
-                .size(40.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(MaterialTheme.colorScheme.onBackground.copy(alpha = 0.05f)),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(icon, contentDescription = null, tint = Color(0xFFF92839), modifier = Modifier.size(20.dp))
-        }
-        Spacer(modifier = Modifier.width(16.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(title, color = MaterialTheme.colorScheme.onBackground, fontSize = 15.sp, fontWeight = FontWeight.Medium)
-            if (description != null) {
-                Text(description, color = Color.Gray, fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp))
+    fun calculateCacheSize() {
+        var sizeBytes = 0L
+        try {
+            // songs you've played are kept on purpose (so they don't use data again), so they're not counted here
+            context.cacheDir.listFiles()?.filter { it.name != "audio_cache" }?.forEach { f ->
+                f.walkTopDown().filter { it.isFile }.forEach { sizeBytes += it.length() }
             }
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
-        if (trailing != null) {
-            Spacer(modifier = Modifier.width(16.dp))
-            trailing()
-        } else {
-            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color.Gray)
-        }
+        cacheSizeMb = sizeBytes / (1024f * 1024f)
+    }
+
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { calculateCacheSize() }
+    }
+
+    SoftCard {
+        SettingRow(
+            icon = Icons.Default.DeleteSweep,
+            title = "Clear cache",
+            description = String.format("%.1f MB of images and temporary data. Downloaded songs are kept.", cacheSizeMb),
+            tint = Muted,
+            onClick = {
+                onClearCache()
+                scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                    kotlinx.coroutines.delay(500)
+                    calculateCacheSize()
+                }
+            }
+        )
     }
 }
 
@@ -353,101 +558,65 @@ private fun AppUpdates(context: android.content.Context) {
     val coroutineScope = rememberCoroutineScope()
     var isChecking by remember { mutableStateOf(false) }
     var updateAvailable by remember { mutableStateOf<com.pulse.music.update.UpdateManager.UpdateInfo?>(null) }
-    
+
     val downloadProgress by com.pulse.music.update.UpdateManager.downloadProgress.collectAsState()
     val downloadedBytes by com.pulse.music.update.UpdateManager.downloadedBytes.collectAsState()
     val downloadStatusText by com.pulse.music.update.UpdateManager.downloadStatusText.collectAsState()
     val isDownloading by com.pulse.music.update.UpdateManager.isDownloading.collectAsState()
-    
     var showUpToDate by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         if (!isDownloading) {
             val info = com.pulse.music.update.UpdateManager.checkForUpdate(com.pulse.music.BuildConfig.VERSION_NAME)
-            if (info != null && info.hasUpdate) {
-                updateAvailable = info
-            }
+            if (info != null && info.hasUpdate) updateAvailable = info
         }
     }
 
-    Column(modifier = Modifier.padding(bottom = 24.dp)) {
-        Text("App", color = MaterialTheme.colorScheme.onBackground, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 16.dp))
-        SettingsCard {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable {
-                        if (!isChecking && !isDownloading) {
-                            if (showUpToDate) return@clickable
-                            isChecking = true
-                            coroutineScope.launch {
-                                try {
-                                    val updateInfo = updateAvailable ?: com.pulse.music.update.UpdateManager.checkForUpdate(com.pulse.music.BuildConfig.VERSION_NAME)
-                                    if (updateInfo != null && updateInfo.hasUpdate) {
-                                        updateAvailable = updateInfo
-                                        com.pulse.music.update.UpdateManager.downloadAndInstallUpdate(context, updateInfo.downloadUrl, coroutineScope)
-                                    } else {
-                                        showUpToDate = true
-                                        android.widget.Toast.makeText(context, "You are on the latest version!", android.widget.Toast.LENGTH_SHORT).show()
-                                    }
-                                } catch (e: Exception) {
-                                    android.widget.Toast.makeText(context, "Failed to check for updates", android.widget.Toast.LENGTH_SHORT).show()
-                                } finally {
-                                    isChecking = false
-                                }
+    SoftCard {
+        val title = when {
+            isDownloading -> downloadStatusText
+            isChecking -> "Checking for updates…"
+            showUpToDate -> "You're up to date"
+            updateAvailable != null -> "Update available (" + updateAvailable!!.newVersion + ")"
+            else -> "Check for updates"
+        }
+        SettingRow(
+            icon = Icons.Default.SystemUpdate,
+            title = title,
+            description = "Version " + com.pulse.music.BuildConfig.VERSION_NAME,
+            tint = if (updateAvailable != null && !showUpToDate && !isDownloading) Color(0xFF10B981) else Accent,
+            onClick = {
+                if (!isChecking && !isDownloading && !showUpToDate) {
+                    isChecking = true
+                    coroutineScope.launch {
+                        try {
+                            val info = updateAvailable ?: com.pulse.music.update.UpdateManager.checkForUpdate(com.pulse.music.BuildConfig.VERSION_NAME)
+                            if (info != null && info.hasUpdate) {
+                                updateAvailable = info
+                                com.pulse.music.update.UpdateManager.downloadAndInstallUpdate(context, info.downloadUrl, coroutineScope)
+                            } else {
+                                showUpToDate = true
                             }
+                        } catch (e: Exception) {
+                            android.widget.Toast.makeText(context, "Couldn't check for updates", android.widget.Toast.LENGTH_SHORT).show()
+                        } finally {
+                            isChecking = false
                         }
-                    }
-                    .padding(16.dp)
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.SystemUpdate, contentDescription = null, tint = Color.LightGray)
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        val titleText = when {
-                            isDownloading -> downloadStatusText
-                            isChecking -> "Checking for updates..."
-                            showUpToDate -> "You are up to date!"
-                            updateAvailable != null -> "New update available (" + updateAvailable!!.newVersion + ")"
-                            else -> "Check for Updates"
-                        }
-                        Text(titleText, color = if (updateAvailable != null && !showUpToDate && !isDownloading) Color(0xFF10B981) else MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold)
-                        Text("Current version: " + com.pulse.music.BuildConfig.VERSION_NAME, color = Color.Gray, fontSize = 12.sp)
-                    }
-                    if (!isDownloading && !showUpToDate && !isChecking) {
-                        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color.Gray)
                     }
                 }
-                
-                if (isDownloading) {
-                    Spacer(modifier = Modifier.height(12.dp))
-                    if (downloadProgress >= 0f) {
-                        androidx.compose.material3.LinearProgressIndicator(
-                            progress = { downloadProgress },
-                            modifier = Modifier.fillMaxWidth().height(4.dp),
-                            color = Color(0xFFF92839),
-                            trackColor = Color.DarkGray
-                        )
-                        Text(
-                            text = "${(downloadProgress * 100).toInt()}% downloaded",
-                            color = Color.Gray,
-                            fontSize = 11.sp,
-                            modifier = Modifier.padding(top = 4.dp).align(Alignment.End)
-                        )
-                    } else {
-                        androidx.compose.material3.LinearProgressIndicator(
-                            modifier = Modifier.fillMaxWidth().height(4.dp),
-                            color = Color(0xFFF92839),
-                            trackColor = Color.DarkGray
-                        )
-                        val mb = String.format("%.1f", downloadedBytes / (1024f * 1024f))
-                        Text(
-                            text = "$mb MB downloaded...",
-                            color = Color.Gray,
-                            fontSize = 11.sp,
-                            modifier = Modifier.padding(top = 4.dp).align(Alignment.End)
-                        )
-                    }
+            },
+            trailing = if (!isDownloading && !showUpToDate && !isChecking) {
+                { Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Muted) }
+            } else null
+        )
+        if (isDownloading) {
+            Column(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 14.dp)) {
+                if (downloadProgress >= 0f) {
+                    LinearProgressIndicator(progress = { downloadProgress }, modifier = Modifier.fillMaxWidth().height(4.dp), color = Accent, trackColor = Color(0xFF262626))
+                    Text("${(downloadProgress * 100).toInt()}% downloaded", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp).align(Alignment.End))
+                } else {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth().height(4.dp), color = Accent, trackColor = Color(0xFF262626))
+                    Text(String.format("%.1f MB downloaded…", downloadedBytes / (1024f * 1024f)), color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp).align(Alignment.End))
                 }
             }
         }
@@ -455,85 +624,13 @@ private fun AppUpdates(context: android.content.Context) {
 }
 
 @Composable
-private fun AccountActions(onLogout: () -> Unit) {
-    Column {
-        Text("Account", color = MaterialTheme.colorScheme.onBackground, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 16.dp))
-        SettingsCard {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onLogout() }
-                    .padding(12.dp)
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Logout, contentDescription = "Logout", tint = Color(0xFFEF4444), modifier = Modifier.size(24.dp))
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Text("Log Out", color = Color(0xFFEF4444), fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                }
-            }
-        }
-        Spacer(modifier = Modifier.height(48.dp))
-        Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-            Text(
-                text = "Made with ❤️  by Rahul",
-                color = Color.Gray.copy(alpha = 0.8f),
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Medium
-            )
-        }
+private fun LogoutRow(onClick: () -> Unit) {
+    SoftCard {
+        SettingRow(
+            icon = Icons.Default.Logout,
+            title = "Log out",
+            tint = Color(0xFFEF4444),
+            onClick = onClick
+        )
     }
 }
-
-@Composable
-private fun StorageSettings(onClearCache: () -> Unit) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    var cacheSizeMb by remember { mutableStateOf(0f) }
-    val scope = rememberCoroutineScope()
-
-    fun calculateCacheSize() {
-        var sizeBytes = 0L
-        try {
-            context.cacheDir.walkTopDown().filter { it.isFile }.forEach { sizeBytes += it.length() }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-        cacheSizeMb = sizeBytes / (1024f * 1024f)
-    }
-
-    LaunchedEffect(Unit) {
-        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-            calculateCacheSize()
-        }
-    }
-
-    Column {
-        Text("Storage", color = MaterialTheme.colorScheme.onBackground, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 16.dp))
-        SettingsCard {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { 
-                        onClearCache()
-                        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                            kotlinx.coroutines.delay(500)
-                            calculateCacheSize()
-                        }
-                    }
-                    .padding(12.dp)
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.DeleteSweep, contentDescription = "Clear Cache", tint = Color.Gray, modifier = Modifier.size(24.dp))
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Column {
-                        val formattedSize = String.format("%.1f MB", cacheSizeMb)
-                        Text("Clear Cache ($formattedSize)", color = MaterialTheme.colorScheme.onBackground, fontSize = 16.sp, fontWeight = FontWeight.Medium)
-                        Text("Free up space by removing cached audio and images", color = Color.Gray, fontSize = 12.sp)
-                    }
-                }
-            }
-        }
-    }
-}
-
-
-

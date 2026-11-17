@@ -189,7 +189,8 @@ data class MusicCapsuleSong(
 
 data class MusicCapsuleArtist(
     val name: String,
-    val playCount: Int
+    val playCount: Int,
+    val image: String? = null
 )
 
 data class MusicCapsuleResponse(
