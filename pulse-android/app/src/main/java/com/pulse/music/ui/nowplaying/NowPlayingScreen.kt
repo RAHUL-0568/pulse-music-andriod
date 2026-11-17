@@ -108,7 +108,7 @@ fun NowPlayingScreen(
                 detectHorizontalDragGestures(
                     onDragEnd = {
                         if (swipeAccumulator < -150f) viewModel.skipNext()
-                        else if (swipeAccumulator > 150f) viewModel.skipPrevious()
+                        else if (swipeAccumulator > 150f) viewModel.skipToPreviousTrack() // a swipe back always means the previous song
                         swipeAccumulator = 0f
                     },
                     onDragCancel = { swipeAccumulator = 0f },

@@ -112,6 +112,8 @@ class MainActivity : ComponentActivity() {
             }
         }
         
+        if (intent?.getBooleanExtra("open_profile", false) == true) openProfileRequest.value = true
+
         val initialToken = runBlocking { authRepository.authToken.first() }
         val startDest = if (initialToken.isNullOrEmpty()) "auth_login" else "home"
 
@@ -144,6 +146,37 @@ class MainActivity : ComponentActivity() {
                         popUpTo(0) { inclusive = true }
                         launchSingleTop = true
                     }
+                }
+
+                // Tapping the "Update available" notification opens Profile
+                LaunchedEffect(openProfileRequest.value) {
+                    if (openProfileRequest.value) {
+                        openProfileRequest.value = false
+                        navController.navigate("profile") { launchSingleTop = true }
+                    }
+                }
+
+                // A pop-up the first time a new version is found while the app is open
+                var dismissedUpdate by remember { mutableStateOf<String?>(null) }
+                val foundUpdate = updateAvailable
+                if (foundUpdate != null && dismissedUpdate != foundUpdate.newVersion &&
+                    currentRoute != null && !currentRoute.startsWith("auth")
+                ) {
+                    AlertDialog(
+                        onDismissRequest = { dismissedUpdate = foundUpdate.newVersion },
+                        containerColor = Color(0xFF141414),
+                        title = { Text("Update available", color = Color.White, fontWeight = FontWeight.Bold) },
+                        text = { Text("Pulse Music ${foundUpdate.newVersion} is ready to install.", color = Color(0xFF9A9A9A)) },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                dismissedUpdate = foundUpdate.newVersion
+                                navController.navigate("profile") { launchSingleTop = true }
+                            }) { Text("View update", color = PulseRed, fontWeight = FontWeight.SemiBold) }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { dismissedUpdate = foundUpdate.newVersion }) { Text("Later", color = Color.White) }
+                        }
+                    )
                 }
 
                 Scaffold { paddingValues ->
@@ -353,7 +386,7 @@ class MainActivity : ComponentActivity() {
                                     onTogglePlay = { musicPlayerManager.togglePlayPause() },
                                     onToggleShuffle = { musicPlayerManager.toggleShuffle() },
                                     onSkipNext = { musicPlayerManager.skipNext() },
-                                    onSkipPrev = { musicPlayerManager.skipPrevious() },
+                                    onSkipPrev = { musicPlayerManager.skipToPreviousTrack() },
                                     onClick = { navController.navigate("now_playing") }
                                 )
                             }
@@ -438,6 +471,14 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+    }
+
+    // Set when the user taps the update notification
+    private val openProfileRequest = mutableStateOf(false)
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        if (intent.getBooleanExtra("open_profile", false)) openProfileRequest.value = true
     }
 
     override fun onResume() {

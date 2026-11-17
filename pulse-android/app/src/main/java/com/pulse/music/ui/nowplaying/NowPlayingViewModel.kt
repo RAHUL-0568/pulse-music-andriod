@@ -95,6 +95,7 @@ class NowPlayingViewModel @Inject constructor(
     fun seekTo(positionMs: Long) = musicPlayerManager.seekTo(positionMs)
     fun skipNext() = musicPlayerManager.skipNext()
     fun skipPrevious() = musicPlayerManager.skipPrevious()
+    fun skipToPreviousTrack() = musicPlayerManager.skipToPreviousTrack()
     fun toggleShuffle() = musicPlayerManager.toggleShuffle()
     fun cycleRepeatMode() = musicPlayerManager.cycleRepeatMode()
 

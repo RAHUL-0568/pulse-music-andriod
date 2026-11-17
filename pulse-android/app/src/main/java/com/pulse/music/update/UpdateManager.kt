@@ -30,7 +30,7 @@ object UpdateManager {
     private const val GITHUB_OWNER = "RAHUL-0568"
     private const val GITHUB_REPO = "pulse-music-andriod"
     private const val GITHUB_API_URL = "https://api.github.com/repos/$GITHUB_OWNER/$GITHUB_REPO/releases/latest"
-    private const val CHECK_EVERY_MS = 30 * 60 * 1000L
+    private const val CHECK_EVERY_MS = 10 * 60 * 1000L
 
     val isDownloading = MutableStateFlow(false)
     val downloadProgress = MutableStateFlow(0f)

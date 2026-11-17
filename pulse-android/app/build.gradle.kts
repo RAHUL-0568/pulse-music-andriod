@@ -16,7 +16,7 @@ android {
         minSdk = 24
         targetSdk = 34
         versionCode = 100 + (System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 0) // always rises with each cloud build, so updates install over each other
-        versionName = "2.3.1"
+        versionName = "2.3.2"
 
         val localProps = Properties()
         val localPropsFile = rootProject.file("local.properties")
@@ -96,6 +96,9 @@ dependencies {
     implementation("androidx.media3:media3-session:$media3_version")
     implementation("androidx.media3:media3-exoplayer-dash:$media3_version")
     implementation("androidx.media3:media3-exoplayer-hls:$media3_version")
+
+    // Background update check
+    implementation("androidx.work:work-runtime-ktx:2.9.0")
 
     // Coil
     // Coil

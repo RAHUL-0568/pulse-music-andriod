@@ -13,6 +13,20 @@ class PulseApplication : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
         com.pulse.music.ui.jam.JamSessionManager.applicationContext = this
+
+        // Check for a new app version about once an hour, even while the app is closed
+        val updateCheck = androidx.work.PeriodicWorkRequestBuilder<com.pulse.music.update.UpdateCheckWorker>(1, java.util.concurrent.TimeUnit.HOURS)
+            .setConstraints(
+                androidx.work.Constraints.Builder()
+                    .setRequiredNetworkType(androidx.work.NetworkType.CONNECTED)
+                    .build()
+            )
+            .build()
+        androidx.work.WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+            "pulse_update_check",
+            androidx.work.ExistingPeriodicWorkPolicy.KEEP,
+            updateCheck
+        )
     }
 
     override fun newImageLoader(): ImageLoader {

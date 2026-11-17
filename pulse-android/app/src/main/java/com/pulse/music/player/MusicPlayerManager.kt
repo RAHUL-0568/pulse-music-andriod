@@ -75,14 +75,17 @@ class MusicPlayerManager @Inject constructor(
                     val uri = dataSpec.uri
                     if (uri.scheme == "pulse" && uri.host == "resolve") {
                         val songId = uri.lastPathSegment ?: return dataSpec
-                        // Same key no matter which CDN URL the song resolves to, so the disk cache always hits.
-                        val cacheKey = "song_$songId"
+                        // One cache entry per song AND quality. Putting a 96 kbps and a 320 kbps copy of the
+                        // same song under one key mixed two different files, which broke seeking.
+                        val fullyCachedKey = listOf("320", "160", "96", "x")
+                            .map { "song_${songId}_$it" }
+                            .firstOrNull { audioCache.isCached(it, 0, androidx.media3.common.C.LENGTH_UNSET.toLong()) }
 
                         // Already fully on disk: skip the lookup (a network call) and the download.
-                        if (audioCache.isCached(cacheKey, 0, androidx.media3.common.C.LENGTH_UNSET.toLong())) {
+                        if (fullyCachedKey != null) {
                             return dataSpec.buildUpon()
                                 .setUri(android.net.Uri.parse("https://cached.invalid/$songId"))
-                                .setKey(cacheKey)
+                                .setKey(fullyCachedKey)
                                 .build()
                         }
 
@@ -107,7 +110,7 @@ class MusicPlayerManager @Inject constructor(
                         run {
                             return dataSpec.buildUpon()
                                 .setUri(android.net.Uri.parse(resolvedUrl))
-                                .setKey(cacheKey)
+                                .setKey("song_${songId}_${bitrateTag(resolvedUrl)}")
                                 .build()
                         }
                     }
@@ -115,6 +118,11 @@ class MusicPlayerManager @Inject constructor(
                 }
             }
         )
+    }
+
+    /** "…_320.mp4" -> "320". Songs whose address doesn't show a bitrate get "x". */
+    private fun bitrateTag(url: String): String {
+        return Regex("_(320|160|96)(?:_p)?\\.").find(url)?.groupValues?.get(1) ?: "x"
     }
 
     /** Best quality only on Wi-Fi (and only if the user left High quality on); ~3x less data on mobile. */
@@ -328,7 +336,14 @@ class MusicPlayerManager @Inject constructor(
         positionPollingJob = scope.launch {
             while (isActive) {
                 _currentPosition.value = player.currentPosition
-                
+
+                // Some streams only report their true length after playback starts. A stale duration (0)
+                // made the seek bar unusable on those songs, so keep it current.
+                val liveDuration = player.duration
+                if (liveDuration != androidx.media3.common.C.TIME_UNSET && liveDuration > 0 && liveDuration != _duration.value) {
+                    _duration.value = liveDuration
+                }
+
 
                 // Crossfade Logic
                 try {
@@ -632,8 +647,15 @@ class MusicPlayerManager @Inject constructor(
                 return
             }
             errorRetrySongId = null
-            if (player.hasNextMediaItem()) {
-                player.seekToNextMediaItem() // still failing: move on to the next song
+            // still failing: move on, in the direction the user was going
+            if (lastNavDirection < 0 && player.hasPreviousMediaItem()) {
+                player.seekToPreviousMediaItem()
+                player.prepare()
+                player.play()
+                return
+            }
+            if (lastNavDirection >= 0 && player.hasNextMediaItem()) {
+                player.seekToNextMediaItem()
                 player.prepare()
                 player.play()
                 return
@@ -646,6 +668,7 @@ class MusicPlayerManager @Inject constructor(
         
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
             if (targetPlayer !== player) return
+            if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO) lastNavDirection = 1 // song ended by itself: we're moving forward
             if (isCrossfading) return // Ignore transitions during crossfade, we already swapped active player
 
             if (_sleepTimerMode.value == SleepTimerMode.END_OF_TRACK) {
@@ -743,6 +766,7 @@ class MusicPlayerManager @Inject constructor(
         abortCrossfade()
         saveRecentPlay(song)
         playSongJob?.cancel()
+        lastNavDirection = 1
         _isBuffering.value = true // shows the spinner while the stream address is looked up
         playSongJob = scope.launch {
             _queue.value = allSongs
@@ -919,8 +943,13 @@ class MusicPlayerManager @Inject constructor(
     }
 
     /** Skip to the next track in the queue. */
+    // +1 = the user last moved forward, -1 = backward. If a song then fails to load, we keep
+    // going the same way (it used to always jump forward, even after you swiped back).
+    private var lastNavDirection = 1
+
     fun skipNext() {
         abortCrossfade()
+        lastNavDirection = 1
         if (player.hasNextMediaItem()) {
             player.seekToNextMediaItem()
         }
@@ -934,8 +963,21 @@ class MusicPlayerManager @Inject constructor(
             _currentPosition.value = 0
             return
         }
+        lastNavDirection = -1
         if (player.hasPreviousMediaItem()) {
             player.seekToPreviousMediaItem()
+        }
+    }
+
+    /** For swipe gestures: always go to the previous song (never just restart the current one). */
+    fun skipToPreviousTrack() {
+        abortCrossfade()
+        lastNavDirection = -1
+        if (player.hasPreviousMediaItem()) {
+            player.seekToPreviousMediaItem()
+        } else {
+            player.seekTo(0)
+            _currentPosition.value = 0
         }
     }
 
