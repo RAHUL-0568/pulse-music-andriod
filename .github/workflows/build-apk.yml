@@ -14,17 +14,14 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
-
-      - uses: android-actions/setup-android@v3
-
       - name: Point the app at the backend
         working-directory: pulse-android
         env:
@@ -41,3 +38,4 @@ jobs:
         with:
           name: pulse-debug-apk
           path: pulse-android/app/build/outputs/apk/debug/*.apk
+
