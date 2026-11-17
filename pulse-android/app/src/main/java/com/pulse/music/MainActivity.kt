@@ -126,6 +126,8 @@ class MainActivity : ComponentActivity() {
                 val currentSong by musicPlayerManager.currentSong.collectAsState()
                 val isPlaying by musicPlayerManager.isPlaying.collectAsState()
                 val isBuffering by musicPlayerManager.isBuffering.collectAsState()
+                // A newer version is published: a red dot appears on the Profile tab
+                val updateAvailable by com.pulse.music.update.UpdateManager.available.collectAsState()
                 val searchFocusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
                 val scope = rememberCoroutineScope()
 
@@ -417,7 +419,13 @@ class MainActivity : ComponentActivity() {
                                                 horizontalAlignment = Alignment.CenterHorizontally,
                                                 verticalArrangement = Arrangement.Center
                                             ) {
-                                                Icon(icon, contentDescription = label, tint = activeColor, modifier = Modifier.size(26.dp))
+                                                if (route == "profile" && updateAvailable != null) {
+                                                    BadgedBox(badge = { Badge(containerColor = PulseRed) }) {
+                                                        Icon(icon, contentDescription = "$label, update available", tint = activeColor, modifier = Modifier.size(26.dp))
+                                                    }
+                                                } else {
+                                                    Icon(icon, contentDescription = label, tint = activeColor, modifier = Modifier.size(26.dp))
+                                                }
                                                 Spacer(modifier = Modifier.height(4.dp))
                                                 Text(label, color = activeColor, fontSize = 10.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium)
                                             }
@@ -430,6 +438,14 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // quiet update check (at most every 30 minutes) when the app opens or comes back
+        lifecycleScope.launch {
+            com.pulse.music.update.UpdateManager.checkIfStale(com.pulse.music.BuildConfig.VERSION_NAME)
+        }
     }
 
     override fun onDestroy() {

@@ -1,6 +1,9 @@
-package com.pulse.music.ui.nowplaying
+﻿package com.pulse.music.ui.nowplaying
 
 import androidx.compose.ui.zIndex
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
+import com.pulse.music.ui.components.PlayingAnimation
 import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
@@ -78,7 +81,6 @@ fun NowPlayingScreen(
     val isJamConnected by com.pulse.music.ui.jam.JamSessionManager.isConnected.collectAsState()
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
-    val scrollState = rememberScrollState()
 
     var showQueue by remember { mutableStateOf(false) }
     var showDevices by remember { mutableStateOf(false) }
@@ -101,7 +103,7 @@ fun NowPlayingScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .background(Color(0xFF000000))
             .pointerInput(Unit) {
                 detectHorizontalDragGestures(
                     onDragEnd = {
@@ -118,8 +120,7 @@ fun NowPlayingScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(top = 24.dp, start = 12.dp, end = 12.dp, bottom = 12.dp)
-                .clip(RoundedCornerShape(32.dp))
+                .padding(top = 24.dp)
         ) {
             // Dynamic Blurred Image Background with Crossfade
             androidx.compose.animation.Crossfade(
@@ -127,7 +128,7 @@ fun NowPlayingScreen(
                 animationSpec = androidx.compose.animation.core.tween(800),
                 label = "now_playing_crossfade"
             ) { art ->
-                val overlayColor = MaterialTheme.colorScheme.background.copy(alpha = 0.65f)
+                val overlayColor = Color(0xFF000000).copy(alpha = 0.72f)
                 coil.compose.AsyncImage(
                     model = art,
                     contentDescription = null,
@@ -137,6 +138,14 @@ fun NowPlayingScreen(
                         .drawWithContent {
                             drawContent()
                             drawRect(overlayColor) // Darken overlay
+                            // Fade to true black towards the bottom
+                            drawRect(
+                                brush = Brush.verticalGradient(
+                                    colors = listOf(Color.Transparent, Color(0xFF000000)),
+                                    startY = size.height * 0.45f,
+                                    endY = size.height
+                                )
+                            )
                         },
                     contentScale = ContentScale.Crop,
                     error = androidx.compose.ui.graphics.vector.rememberVectorPainter(androidx.compose.material.icons.Icons.Default.MusicNote)
@@ -221,9 +230,10 @@ fun NowPlayingScreen(
                         .fillMaxWidth()
                         .padding(horizontal = 24.dp)
                         .clip(RoundedCornerShape(16.dp))
-                        .background(MaterialTheme.colorScheme.surface)
-                        .padding(24.dp)
+                        .background(Color(0xFF0F0F0F))
+                        .border(1.dp, Color(0xFF1F1F1F), RoundedCornerShape(16.dp))
                         .clickable { showLyrics = true }
+                        .padding(24.dp)
                 ) {
                     val previewLines = when (val state = lyricsState) {
                         is LyricsState.Synced -> state.lines.drop(maxOf(0, highlightedIndex)).take(4).map { it.text }.joinToString("\n")
@@ -231,7 +241,7 @@ fun NowPlayingScreen(
                         is LyricsState.Loading -> "Loading lyrics..."
                         is LyricsState.Unavailable -> "Lyrics not available."
                     }
-                    Text(text = previewLines, color = MaterialTheme.colorScheme.onBackground.copy(alpha=0.7f), fontSize = 16.sp, lineHeight = 24.sp)
+                    Text(text = previewLines, color = Color(0xFFD0D0D0), fontSize = 18.sp, fontWeight = FontWeight.SemiBold, lineHeight = 28.sp)
                 }
                 
                 Spacer(modifier = Modifier.height(32.dp))
@@ -257,14 +267,14 @@ fun NowPlayingScreen(
                                 AsyncImage(
                                     model = recSong.albumArt,
                                     contentDescription = "Cover",
-                                    modifier = Modifier.size(56.dp).clip(RoundedCornerShape(8.dp)),
+                                    modifier = Modifier.size(56.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFF1A1A1A)),
                                     contentScale = ContentScale.Crop,
                                     error = androidx.compose.ui.graphics.vector.rememberVectorPainter(Icons.Default.MusicNote)
                                 )
                                 Spacer(modifier = Modifier.width(16.dp))
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text(recSong.title, color = MaterialTheme.colorScheme.onBackground, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    Text(recSong.artist, color = MaterialTheme.colorScheme.onBackground.copy(0.6f), fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(recSong.title, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(recSong.artist, color = Color(0xFF9A9A9A), fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 }
                             }
                         }
@@ -283,7 +293,7 @@ fun NowPlayingScreen(
                         .fillMaxWidth()
                         .height(80.dp)
                         .zIndex(1f)
-                        .background(Color(0xEE111111).copy(alpha = collapseProgress))
+                        .background(Color(0xFF0A0A0A).copy(alpha = collapseProgress))
                         .padding(horizontal = 16.dp, vertical = 8.dp),
                     contentAlignment = Alignment.Center
                 ) {
@@ -362,10 +372,10 @@ fun NowPlayingScreen(
             modifier = Modifier.align(Alignment.BottomCenter).zIndex(2f)
         ) {
             when (val state = lyricsState) {
-                is LyricsState.Loading -> Box(modifier = Modifier.fillMaxWidth().fillMaxHeight(0.7f).background(MaterialTheme.colorScheme.surface, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)).padding(24.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = PulseRed) }
+                is LyricsState.Loading -> Box(modifier = Modifier.fillMaxWidth().fillMaxHeight(0.7f).background(Color(0xFF0F0F0F),RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)).padding(24.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = PulseRed) }
                 is LyricsState.Synced -> LyricsPanel(lyrics = state.lines, highlightedIndex = highlightedIndex, onClose = { showLyrics = false }, onSeek = { viewModel.seekTo(it) })
                 is LyricsState.Plain -> LyricsPanel(lyrics = state.text.split("\n").map { LyricLine(0L, it) }, highlightedIndex = -1, onClose = { showLyrics = false }, onSeek = null)
-                is LyricsState.Unavailable -> Box(modifier = Modifier.fillMaxWidth().fillMaxHeight(0.7f).background(MaterialTheme.colorScheme.surface, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)).padding(24.dp), contentAlignment = Alignment.Center) { Column(horizontalAlignment = Alignment.CenterHorizontally) { Text("Lyrics not available", color = MaterialTheme.colorScheme.onBackground); Spacer(modifier = Modifier.height(16.dp)); Button(onClick = { showLyrics = false }, colors = ButtonDefaults.buttonColors(containerColor = PulseRed, contentColor = MaterialTheme.colorScheme.background)) { Text("Close", fontWeight = FontWeight.Bold) } } }
+                is LyricsState.Unavailable -> Box(modifier = Modifier.fillMaxWidth().fillMaxHeight(0.7f).background(Color(0xFF0F0F0F), RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)).padding(24.dp), contentAlignment = Alignment.Center) { Column(horizontalAlignment = Alignment.CenterHorizontally) { Text("Lyrics not available", color = Color(0xFF9A9A9A)); Spacer(modifier = Modifier.height(16.dp)); Button(onClick = { showLyrics = false }, colors = ButtonDefaults.buttonColors(containerColor = PulseRed, contentColor = Color.White)) { Text("Close", fontWeight = FontWeight.Bold) } } }
             }
         }
     }
@@ -435,19 +445,19 @@ fun MainPlayerContent(
 
         Column(
             modifier = Modifier
-                .widthIn(max = 390.dp)
+                .widthIn(max = 420.dp)
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(20.dp))
                 .background(bgColor)
-                .padding(24.dp),
+                .padding(horizontal = 24.dp, vertical = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             // ARTWORK
             Box(modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(1f)
-                .clip(RoundedCornerShape(20.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant), 
+                .shadow(24.dp, RoundedCornerShape(16.dp), clip = false)
+                .clip(RoundedCornerShape(16.dp))
+                .background(Color(0xFF141414)),
                 contentAlignment = Alignment.Center
             ) {
                 if (!currentSong?.albumArt.isNullOrEmpty()) {
@@ -478,7 +488,7 @@ fun MainPlayerContent(
                 }
             }
 
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(28.dp))
 
             // SONG INFO (Top Section)
             Row(
@@ -490,8 +500,8 @@ fun MainPlayerContent(
                     Text(
                         text = songTitle, 
                         color = pureWhite, 
-                        fontSize = 26.sp, 
-                        fontWeight = FontWeight.Bold, 
+                        fontSize = 28.sp,
+                        fontWeight = FontWeight.ExtraBold,
                         maxLines = 1, 
                         overflow = TextOverflow.Ellipsis
                     )
@@ -501,8 +511,8 @@ fun MainPlayerContent(
                         artists.forEachIndexed { index, artist -> 
                             Text(
                                 text = artist + if (index < artists.size - 1) "," else "", 
-                                color = pureWhite.copy(alpha = 0.7f), 
-                                fontSize = 18.sp, 
+                                color = Color(0xFF9A9A9A),
+                                fontSize = 17.sp,
                                 modifier = Modifier.clickable { onNavigateToArtist(artist) }
                             ) 
                         }
@@ -518,27 +528,40 @@ fun MainPlayerContent(
                         if (isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                         contentDescription = "Like",
                         tint = if (isLiked) PulseRed else pureWhite,
-                        modifier = Modifier.size(24.dp).scale(heartScale)
+                        modifier = Modifier.size(28.dp).scale(heartScale)
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(20.dp))
 
             // PROGRESS BAR
+            var isDragging by remember { mutableStateOf(false) }
+            var dragValue by remember { mutableStateOf(0f) }
             Column(modifier = Modifier.fillMaxWidth()) {
                 Slider(
-                    value = progress,
-                    onValueChange = { seekProgress -> viewModel.seekTo((seekProgress * duration).toLong()) },
+                    value = if (isDragging) dragValue else progress.coerceIn(0f, 1f),
+                    onValueChange = { seekProgress ->
+                        isDragging = true
+                        dragValue = seekProgress
+                    },
+                    onValueChangeFinished = {
+                        viewModel.seekTo((dragValue * duration).toLong())
+                        isDragging = false
+                    },
                     modifier = Modifier.fillMaxWidth().height(20.dp),
                     colors = SliderDefaults.colors(
                         thumbColor = pureWhite,
                         activeTrackColor = pureWhite,
-                        inactiveTrackColor = Color(0xFF535353)
+                        inactiveTrackColor = Color(0xFF3A3A3A)
                     )
                 )
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(formatTime(currentPosition), color = mutedGray, fontSize = 13.sp)
+                    Text(
+                        formatTime(if (isDragging) (dragValue * duration).toLong() else currentPosition),
+                        color = mutedGray,
+                        fontSize = 13.sp
+                    )
                     Text(formatTime(duration), color = mutedGray, fontSize = 13.sp)
                 }
             }
@@ -547,36 +570,36 @@ fun MainPlayerContent(
 
             // PLAYBACK CONTROLS (Middle Row)
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = { viewModel.toggleShuffle() }) { 
-                    Icon(Icons.Default.Shuffle, "Shuffle", tint = if (shuffleEnabled) pureWhite else mutedGray, modifier = Modifier.size(24.dp)) 
+                IconButton(onClick = { viewModel.toggleShuffle() }) {
+                    Icon(Icons.Default.Shuffle, "Shuffle", tint = if (shuffleEnabled) PulseRed else mutedGray, modifier = Modifier.size(24.dp))
                 }
-                IconButton(onClick = { viewModel.skipPrevious() }) { 
-                    Icon(Icons.Default.SkipPrevious, "Previous", tint = pureWhite, modifier = Modifier.size(28.dp)) 
+                IconButton(onClick = { viewModel.skipPrevious() }, modifier = Modifier.size(56.dp)) {
+                    Icon(Icons.Default.SkipPrevious, "Previous", tint = pureWhite, modifier = Modifier.size(40.dp))
                 }
                 
                 // Central Play/Pause
                 Box(
                     modifier = Modifier
-                        .size(64.dp)
+                        .size(76.dp)
                         .clip(CircleShape)
                         .background(pureWhite)
                         .clickable { viewModel.togglePlayPause() },
                     contentAlignment = Alignment.Center
-                ) { 
+                ) {
                     val buffering by viewModel.isBuffering.collectAsState()
                     if (buffering) {
                         // A small spinner while the song loads, instead of an error
-                        CircularProgressIndicator(color = Color(0xFF1A1A2E), strokeWidth = 3.dp, modifier = Modifier.size(28.dp))
+                        CircularProgressIndicator(color = Color(0xFF000000), strokeWidth = 3.dp, modifier = Modifier.size(32.dp))
                     } else {
-                        Icon(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, "Play/Pause", tint = Color(0xFF1A1A2E), modifier = Modifier.size(32.dp))
+                        Icon(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, "Play/Pause", tint = Color(0xFF000000), modifier = Modifier.size(40.dp))
                     }
                 }
-                
-                IconButton(onClick = { viewModel.skipNext() }) { 
-                    Icon(Icons.Default.SkipNext, "Next", tint = pureWhite, modifier = Modifier.size(28.dp)) 
+
+                IconButton(onClick = { viewModel.skipNext() }, modifier = Modifier.size(56.dp)) {
+                    Icon(Icons.Default.SkipNext, "Next", tint = pureWhite, modifier = Modifier.size(40.dp))
                 }
-                IconButton(onClick = { viewModel.cycleRepeatMode() }) { 
-                    val tintColor = if (repeatMode != RepeatMode.OFF) PulseRed else pureWhite
+                IconButton(onClick = { viewModel.cycleRepeatMode() }) {
+                    val tintColor = if (repeatMode != RepeatMode.OFF) PulseRed else mutedGray
                     Icon(
                         imageVector = when (repeatMode) { 
                             RepeatMode.ONE -> Icons.Default.RepeatOne 
@@ -617,8 +640,8 @@ fun MainPlayerContent(
                 .padding(bottom = 4.dp)
         ) {
             Text(
-                text = "Made with ❤️  by Rahul",
-                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f),
+                text = "Made by Rahul",
+                color = Color(0xFF9A9A9A),
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Medium
             )
@@ -628,9 +651,9 @@ fun MainPlayerContent(
     if (showMoreMenu) {
         ModalBottomSheet(
             onDismissRequest = { showMoreMenu = false },
-            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+            containerColor = Color(0xFF0F0F0F),
             shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-            dragHandle = { BottomSheetDefaults.DragHandle(color = Color.Gray) }
+            dragHandle = { BottomSheetDefaults.DragHandle(color = Color(0xFF3A3A3A)) }
         ) {
             Column(
                 modifier = Modifier
@@ -647,19 +670,19 @@ fun MainPlayerContent(
                     AsyncImage(
                         model = currentSong?.albumArt,
                         contentDescription = "Album Art",
-                        modifier = Modifier.size(48.dp).clip(RoundedCornerShape(4.dp)),
+                        modifier = Modifier.size(56.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFF1A1A1A)),
                         contentScale = ContentScale.Crop,
                         error = androidx.compose.ui.graphics.vector.rememberVectorPainter(Icons.Default.MusicNote)
                     )
-                    Spacer(modifier = Modifier.width(12.dp))
+                    Spacer(modifier = Modifier.width(14.dp))
                     Column {
-                        Text(songTitle, color = pureWhite, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(songArtist, color = Color(0xFFAAAAAA), fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(songTitle, color = pureWhite, fontSize = 17.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(songArtist, color = Color(0xFF9A9A9A), fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
-                HorizontalDivider(color = Color(0xFF282828), thickness = 1.dp)
+                Spacer(modifier = Modifier.height(12.dp))
+                HorizontalDivider(color = Color(0xFF1F1F1F), thickness = 1.dp)
 
                 // Menu Options
                 val menuItems = mutableListOf(
@@ -692,9 +715,9 @@ fun MainPlayerContent(
                             .height(56.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(icon, contentDescription = null, tint = if (text.contains("Liked Songs") && isLiked) PulseRed else pureWhite, modifier = Modifier.size(24.dp))
-                        Spacer(modifier = Modifier.width(16.dp))
-                        Text(text, color = pureWhite, fontSize = 16.sp)
+                        Icon(icon, contentDescription = null, tint = if (text.contains("Liked Songs") && isLiked) PulseRed else mutedGray, modifier = Modifier.size(24.dp))
+                        Spacer(modifier = Modifier.width(20.dp))
+                        Text(text, color = pureWhite, fontSize = 16.sp, fontWeight = FontWeight.Medium)
                     }
                 }
             }
@@ -704,8 +727,9 @@ fun MainPlayerContent(
     if (showPlaylistSelector) {
         ModalBottomSheet(
             onDismissRequest = { showPlaylistSelector = false },
-            containerColor = MaterialTheme.colorScheme.surfaceVariant,
-            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+            containerColor = Color(0xFF0F0F0F),
+            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+            dragHandle = { BottomSheetDefaults.DragHandle(color = Color(0xFF3A3A3A)) }
         ) {
             Column(modifier = Modifier.fillMaxWidth().padding(bottom = 32.dp)) {
                 Row(
@@ -723,9 +747,10 @@ fun MainPlayerContent(
                         showPlaylistSelector = false
                         showCreatePlaylistDialog = true 
                     }) {
-                        Icon(Icons.Default.Add, contentDescription = "Create Playlist", tint = pureWhite)
+                        Icon(Icons.Default.Add, contentDescription = "Create Playlist", tint = PulseRed)
                     }
                 }
+                HorizontalDivider(color = Color(0xFF1F1F1F), thickness = 1.dp)
                 LazyColumn {
 
                     items(playlists.size) { index ->
@@ -742,9 +767,9 @@ fun MainPlayerContent(
                                 .padding(horizontal = 16.dp, vertical = 12.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(Icons.AutoMirrored.Filled.QueueMusic, contentDescription = null, tint = pureWhite, modifier = Modifier.size(24.dp))
+                            Icon(Icons.AutoMirrored.Filled.QueueMusic, contentDescription = null, tint = mutedGray, modifier = Modifier.size(24.dp))
                             Spacer(modifier = Modifier.width(16.dp))
-                            Text(playlist.name, color = pureWhite, fontSize = 16.sp)
+                            Text(playlist.name, color = pureWhite, fontSize = 16.sp, fontWeight = FontWeight.Medium)
                         }
                     }
                 }
@@ -758,7 +783,7 @@ fun MainPlayerContent(
                 showCreatePlaylistDialog = false 
                 newPlaylistName = ""
             },
-            containerColor = Color(0xFF282828),
+            containerColor = Color(0xFF0F0F0F),
             title = { Text("Create New Playlist", color = pureWhite, fontWeight = FontWeight.Bold) },
             text = {
                 OutlinedTextField(
@@ -769,7 +794,7 @@ fun MainPlayerContent(
                         focusedTextColor = pureWhite,
                         unfocusedTextColor = pureWhite,
                         focusedBorderColor = PulseRed,
-                        unfocusedBorderColor = mutedGray,
+                        unfocusedBorderColor = Color(0xFF1F1F1F),
                         cursorColor = PulseRed
                     ),
                     singleLine = true,
@@ -803,7 +828,7 @@ fun MainPlayerContent(
     if (showSleepTimerDialog) {
         AlertDialog(
             onDismissRequest = { showSleepTimerDialog = false },
-            containerColor = Color(0xFF282828),
+            containerColor = Color(0xFF0F0F0F),
             title = { Text("Sleep Timer", color = pureWhite, fontWeight = FontWeight.Bold) },
             text = {
                 Column(modifier = Modifier.fillMaxWidth()) {
@@ -847,7 +872,7 @@ fun MainPlayerContent(
                                     }
                                     Text(
                                         text = timeText,
-                                        color = if (isActive) PulseRed else Color.Gray,
+                                        color = if (isActive) PulseRed else mutedGray,
                                         fontSize = 16.sp,
                                         fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
                                     )
@@ -856,7 +881,7 @@ fun MainPlayerContent(
                         }
                     }
                     if (sleepTimerMode != com.pulse.music.player.SleepTimerMode.OFF) {
-                        HorizontalDivider(color = Color(0xFF404040), thickness = 1.dp, modifier = Modifier.padding(vertical = 8.dp))
+                        HorizontalDivider(color = Color(0xFF1F1F1F), thickness = 1.dp, modifier = Modifier.padding(vertical = 8.dp))
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -873,119 +898,10 @@ fun MainPlayerContent(
             },
             confirmButton = {
                 TextButton(onClick = { showSleepTimerDialog = false }) {
-                    Text("Cancel", color = pureWhite)
+                    Text("Cancel", color = mutedGray)
                 }
             }
         )
-    }
-}
-
-@Composable
-fun DevicePanel(
-    devices: List<android.media.AudioDeviceInfo>,
-    onSelectDevice: (android.media.AudioDeviceInfo) -> Unit,
-    onClose: () -> Unit
-) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .fillMaxHeight(0.5f)
-            .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
-            .padding(top = 16.dp)
-    ) {
-        Column {
-            // Header
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    "Select Output Device",
-                    color = MaterialTheme.colorScheme.onBackground,
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold
-                )
-                IconButton(onClick = onClose) {
-                    Icon(Icons.Default.Close, "Close", tint = MaterialTheme.colorScheme.onBackground)
-                }
-            }
-
-            HorizontalDivider(color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.1f), thickness = 1.dp)
-
-            LazyColumn(modifier = Modifier.fillMaxSize()) {
-                items(devices) { device ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onSelectDevice(device) }
-                            .padding(horizontal = 20.dp, vertical = 16.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = if (device.type == android.media.AudioDeviceInfo.TYPE_BLUETOOTH_A2DP || device.type == android.media.AudioDeviceInfo.TYPE_BLUETOOTH_SCO) {
-                                Icons.Default.Bluetooth
-                            } else if (device.type == android.media.AudioDeviceInfo.TYPE_WIRED_HEADPHONES || device.type == android.media.AudioDeviceInfo.TYPE_WIRED_HEADSET) {
-                                Icons.Default.Headphones
-                            } else {
-                                Icons.Default.Speaker
-                            },
-                            contentDescription = "Device Type",
-                            tint = PulseRed
-                        )
-                        Spacer(modifier = Modifier.width(16.dp))
-                        Text(
-                            text = device.productName.toString().takeIf { it.isNotBlank() } ?: "Unknown Device",
-                            color = MaterialTheme.colorScheme.onBackground,
-                            style = MaterialTheme.typography.bodyLarge
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun WaveformSeekbar(
-    progress: Float,
-    onSeek: (Float) -> Unit = {}
-) {
-    val barCount = 42
-    val playedUntil = (barCount * progress).toInt()
-    val barHeights = remember { List(barCount) { Random.nextInt(8, 30) } }
-    var componentWidth by remember { mutableStateOf(0) }
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(30.dp)
-            .onSizeChanged { componentWidth = it.width }
-            .pointerInput(Unit) {
-                detectTapGestures { offset ->
-                    if (componentWidth > 0) {
-                        val seekProgress = (offset.x / componentWidth).coerceIn(0f, 1f)
-                        onSeek(seekProgress)
-                    }
-                }
-            },
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.Bottom
-    ) {
-        for (i in 0 until barCount) {
-            val height = barHeights[i]
-            val color = if (i < playedUntil) PulseRed else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.15f)
-
-            Box(
-                modifier = Modifier
-                    .width(3.dp)
-                    .height(height.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(color)
-            )
-        }
     }
 }
 
@@ -1013,7 +929,8 @@ fun QueuePanel(
         modifier = Modifier
             .fillMaxWidth()
             .fillMaxHeight(0.7f)
-            .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+            .background(Color(0xFF0F0F0F), RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+            .border(1.dp, Color(0xFF1F1F1F), RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
             .padding(top = 16.dp)
     ) {
         Column {
@@ -1027,24 +944,24 @@ fun QueuePanel(
             ) {
                 Text(
                     "Queue",
-                    color = MaterialTheme.colorScheme.onBackground,
+                    color = Color.White,
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         "${queue.size} songs",
-                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f),
+                        color = Color(0xFF9A9A9A),
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     IconButton(onClick = onClose) {
-                        Icon(Icons.Default.Close, "Close", tint = MaterialTheme.colorScheme.onBackground)
+                        Icon(Icons.Default.Close, "Close", tint = Color.White)
                     }
                 }
             }
 
-            Divider(color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.1f), thickness = 1.dp)
+            HorizontalDivider(color = Color(0xFF1F1F1F), thickness = 1.dp)
 
             // Song list
             LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
@@ -1056,7 +973,7 @@ fun QueuePanel(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(if (isCurrent) PulseRed.copy(alpha = 0.1f) else Color.Transparent)
+                            .background(if (isCurrent) PulseRed.copy(alpha = 0.08f) else Color.Transparent)
                             .clickable { onSongClick(index) }
                             .padding(horizontal = 20.dp, vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically
@@ -1067,16 +984,11 @@ fun QueuePanel(
                             contentAlignment = Alignment.Center
                         ) {
                             if (isCurrent) {
-                                Icon(
-                                    Icons.Default.Equalizer,
-                                    contentDescription = "Playing",
-                                    tint = PulseRed,
-                                    modifier = Modifier.size(20.dp)
-                                )
+                                PlayingAnimation()
                             } else {
                                 Text(
                                     "${index + 1}",
-                                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.4f),
+                                    color = Color(0xFF9A9A9A),
                                     fontSize = 14.sp
                                 )
                             }
@@ -1088,9 +1000,9 @@ fun QueuePanel(
                             model = song.albumArt,
                             contentDescription = "Cover",
                             modifier = Modifier
-                                .size(40.dp)
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(Color.DarkGray),
+                                .size(48.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0xFF1A1A1A)),
                             contentScale = ContentScale.Crop,
                             error = androidx.compose.ui.graphics.vector.rememberVectorPainter(Icons.Default.MusicNote)
                         )
@@ -1100,15 +1012,15 @@ fun QueuePanel(
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 song.title,
-                                color = if (isCurrent) PulseRed else MaterialTheme.colorScheme.onBackground,
+                                color = if (isCurrent) PulseRed else Color.White,
                                 fontSize = 15.sp,
-                                fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
+                                fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Medium,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
                             Text(
                                 song.artist,
-                                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f),
+                                color = Color(0xFF9A9A9A),
                                 fontSize = 12.sp,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
@@ -1120,8 +1032,8 @@ fun QueuePanel(
                                 Icon(
                                     Icons.Default.Close,
                                     contentDescription = "Remove",
-                                    tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.4f),
-                                    modifier = Modifier.size(18.dp)
+                                    tint = Color(0xFF9A9A9A),
+                                    modifier = Modifier.size(20.dp)
                                 )
                             }
                         }
@@ -1131,8 +1043,8 @@ fun QueuePanel(
                 if (recommendations.isNotEmpty()) {
                     item {
                         Text(
-                            text = "Recommended based on what's playing",
-                            color = MaterialTheme.colorScheme.onBackground,
+                            text = "More like this",
+                            color = Color.White,
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier.padding(start = 20.dp, top = 24.dp, bottom = 12.dp)
@@ -1155,7 +1067,7 @@ fun QueuePanel(
                                 modifier = Modifier
                                     .size(48.dp)
                                     .clip(RoundedCornerShape(8.dp))
-                                    .background(Color.DarkGray),
+                                    .background(Color(0xFF1A1A1A)),
                                 contentScale = ContentScale.Crop,
                                 error = androidx.compose.ui.graphics.vector.rememberVectorPainter(Icons.Default.Album)
                             )
@@ -1166,14 +1078,15 @@ fun QueuePanel(
                             ) {
                                 Text(
                                     text = song.title,
-                                    color = MaterialTheme.colorScheme.onBackground,
+                                    color = Color.White,
                                     fontSize = 15.sp,
+                                    fontWeight = FontWeight.Medium,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
                                 Text(
                                     text = song.artist,
-                                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f),
+                                    color = Color(0xFF9A9A9A),
                                     fontSize = 12.sp,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
@@ -1205,31 +1118,38 @@ fun LyricsPanel(lyrics: List<LyricLine>, highlightedIndex: Int, onClose: () -> U
         modifier = Modifier
             .fillMaxWidth()
             .fillMaxHeight(0.9f)
-            .background(MaterialTheme.colorScheme.background.copy(alpha = 0.95f), RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+            .background(Color(0xFF000000).copy(alpha = 0.97f), RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+            .border(1.dp, Color(0xFF1F1F1F), RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
             .padding(24.dp)
     ) {
         Column {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Lyrics", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                 IconButton(onClick = onClose) {
-                    Icon(Icons.Default.Close, "Close Lyrics", tint = MaterialTheme.colorScheme.onBackground)
+                    Icon(Icons.Default.Close, "Close Lyrics", tint = Color.White)
                 }
             }
             if (lyrics.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("No lyrics available", color = MaterialTheme.colorScheme.onBackground)
+                    Text("No lyrics available", color = Color(0xFF9A9A9A))
                 }
             } else {
                 LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
                     itemsIndexed(lyrics) { index, line ->
                         val isHighlighted = index == highlightedIndex
                         val alpha by animateFloatAsState(if (isHighlighted) 1f else 0.4f)
-                        val fontSize by animateFloatAsState(if (isHighlighted) 28f else 22f)
+                        val fontSize by animateFloatAsState(if (isHighlighted) 30f else 22f)
 
                         Text(
                             text = line.text,
-                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = alpha),
+                            color = Color.White.copy(alpha = alpha),
                             fontSize = fontSize.sp,
-                            fontWeight = if (isHighlighted) FontWeight.Bold else FontWeight.Normal,
+                            lineHeight = (fontSize * 1.25f).sp,
+                            fontWeight = if (isHighlighted) FontWeight.ExtraBold else FontWeight.SemiBold,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable(enabled = onSeek != null && line.timeMs > 0) {

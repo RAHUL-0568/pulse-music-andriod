@@ -556,57 +556,75 @@ private fun StorageSettings(onClearCache: () -> Unit) {
 @Composable
 private fun AppUpdates(context: android.content.Context) {
     val coroutineScope = rememberCoroutineScope()
-    var isChecking by remember { mutableStateOf(false) }
-    var updateAvailable by remember { mutableStateOf<com.pulse.music.update.UpdateManager.UpdateInfo?>(null) }
-
+    val update by com.pulse.music.update.UpdateManager.available.collectAsState()
     val downloadProgress by com.pulse.music.update.UpdateManager.downloadProgress.collectAsState()
     val downloadedBytes by com.pulse.music.update.UpdateManager.downloadedBytes.collectAsState()
     val downloadStatusText by com.pulse.music.update.UpdateManager.downloadStatusText.collectAsState()
     val isDownloading by com.pulse.music.update.UpdateManager.isDownloading.collectAsState()
-    var showUpToDate by remember { mutableStateOf(false) }
+    var isChecking by remember { mutableStateOf(false) }
+    var message by remember { mutableStateOf<String?>(null) } // short result such as "You're up to date"
 
-    LaunchedEffect(Unit) {
-        if (!isDownloading) {
-            val info = com.pulse.music.update.UpdateManager.checkForUpdate(com.pulse.music.BuildConfig.VERSION_NAME)
-            if (info != null && info.hasUpdate) updateAvailable = info
+    LaunchedEffect(message) {
+        if (message != null) {
+            kotlinx.coroutines.delay(3500)
+            message = null
         }
+    }
+    // quiet check when this page opens (the app also checks when it starts)
+    LaunchedEffect(Unit) {
+        com.pulse.music.update.UpdateManager.checkIfStale(com.pulse.music.BuildConfig.VERSION_NAME)
     }
 
     SoftCard {
         val title = when {
             isDownloading -> downloadStatusText
             isChecking -> "Checking for updates…"
-            showUpToDate -> "You're up to date"
-            updateAvailable != null -> "Update available (" + updateAvailable!!.newVersion + ")"
+            message != null -> message!!
+            update != null -> "Update available: " + update!!.newVersion
             else -> "Check for updates"
+        }
+        val subtitle = if (update != null && !isDownloading) {
+            "Tap to download and install"
+        } else {
+            "You have version " + com.pulse.music.BuildConfig.VERSION_NAME
         }
         SettingRow(
             icon = Icons.Default.SystemUpdate,
             title = title,
-            description = "Version " + com.pulse.music.BuildConfig.VERSION_NAME,
-            tint = if (updateAvailable != null && !showUpToDate && !isDownloading) Color(0xFF10B981) else Accent,
+            description = subtitle,
+            tint = if (update != null) Color(0xFF10B981) else Accent,
             onClick = {
-                if (!isChecking && !isDownloading && !showUpToDate) {
-                    isChecking = true
-                    coroutineScope.launch {
-                        try {
-                            val info = updateAvailable ?: com.pulse.music.update.UpdateManager.checkForUpdate(com.pulse.music.BuildConfig.VERSION_NAME)
-                            if (info != null && info.hasUpdate) {
-                                updateAvailable = info
-                                com.pulse.music.update.UpdateManager.downloadAndInstallUpdate(context, info.downloadUrl, coroutineScope)
-                            } else {
-                                showUpToDate = true
+                if (!isChecking && !isDownloading) {
+                    val current = update
+                    if (current != null) {
+                        if (!com.pulse.music.update.UpdateManager.canInstall(context)) {
+                            android.widget.Toast.makeText(context, "Allow Pulse to install apps, then tap Update again.", android.widget.Toast.LENGTH_LONG).show()
+                            com.pulse.music.update.UpdateManager.openInstallSettings(context)
+                        } else {
+                            com.pulse.music.update.UpdateManager.downloadAndInstallUpdate(context, current.downloadUrl)
+                        }
+                    } else {
+                        isChecking = true
+                        coroutineScope.launch {
+                            val result = com.pulse.music.update.UpdateManager.check(com.pulse.music.BuildConfig.VERSION_NAME)
+                            message = when (result) {
+                                is com.pulse.music.update.UpdateManager.UpdateCheck.Available -> null
+                                is com.pulse.music.update.UpdateManager.UpdateCheck.UpToDate -> "You're up to date"
+                                is com.pulse.music.update.UpdateManager.UpdateCheck.Failed -> "Couldn't reach the update server"
                             }
-                        } catch (e: Exception) {
-                            android.widget.Toast.makeText(context, "Couldn't check for updates", android.widget.Toast.LENGTH_SHORT).show()
-                        } finally {
                             isChecking = false
                         }
                     }
                 }
             },
-            trailing = if (!isDownloading && !showUpToDate && !isChecking) {
-                { Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Muted) }
+            trailing = if (update != null && !isDownloading) {
+                {
+                    Box(
+                        modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(Accent).padding(horizontal = 8.dp, vertical = 3.dp)
+                    ) {
+                        Text("NEW", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
             } else null
         )
         if (isDownloading) {
@@ -622,7 +640,6 @@ private fun AppUpdates(context: android.content.Context) {
         }
     }
 }
-
 @Composable
 private fun LogoutRow(onClick: () -> Unit) {
     SoftCard {

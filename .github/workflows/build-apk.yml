@@ -1,4 +1,4 @@
-﻿name: Build debug APK
+name: Build debug APK
 
 on:
   push:
@@ -45,11 +45,21 @@ jobs:
           name: pulse-debug-apk
           path: pulse-android/app/build/outputs/apk/debug/*.apk
 
-      - name: Publish APK as a download link
+      - name: Publish releases
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp pulse-android/app/build/outputs/apk/debug/app-debug.apk Pulse-Music-debug.apk
-          gh release delete debug-latest --yes --cleanup-tag || true
-          gh release create debug-latest Pulse-Music-debug.apk --prerelease --target "$GITHUB_SHA" --title "Pulse Music debug build" --notes "Debug build of the native app. Built from the feature/native-kotlin-app branch." 
+          VERSION=$(grep -oP 'versionName = "\K[^"]+' pulse-android/app/build.gradle.kts)
+          APK=pulse-android/app/build/outputs/apk/debug/app-debug.apk
+          cp "$APK" Pulse-Music-debug.apk
+          cp "$APK" "PulseMusic-v${VERSION}.apk"
 
+          # Rolling test build (same link every time)
+          gh release delete debug-latest --yes --cleanup-tag || true
+          gh release create debug-latest Pulse-Music-debug.apk --prerelease --target "$GITHUB_SHA" \
+            --title "Pulse Music test build" --notes "Latest test build."
+
+          # Versioned release: the app's update check reads this one. Bump versionName to ship an update.
+          gh release delete "v${VERSION}" --yes --cleanup-tag || true
+          gh release create "v${VERSION}" "PulseMusic-v${VERSION}.apk" --latest --target "$GITHUB_SHA" \
+            --title "Pulse Music v${VERSION}" --notes "Pulse Music ${VERSION}"

@@ -15,8 +15,8 @@ android {
         applicationId = "com.pulse.music"
         minSdk = 24
         targetSdk = 34
-        versionCode = 13
-        versionName = "2.2.9"
+        versionCode = 100 + (System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 0) // always rises with each cloud build, so updates install over each other
+        versionName = "2.3.0"
 
         val localProps = Properties()
         val localPropsFile = rootProject.file("local.properties")
