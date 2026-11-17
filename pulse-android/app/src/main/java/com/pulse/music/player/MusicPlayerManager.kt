@@ -113,7 +113,8 @@ class MusicPlayerManager @Inject constructor(
         if (!settingOn) return false
         return try {
             val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
-            !cm.isActiveNetworkMetered
+            val onMobileData = cm.isActiveNetworkMetered
+            onMobileData.not()
         } catch (e: Exception) { true }
     }
 
