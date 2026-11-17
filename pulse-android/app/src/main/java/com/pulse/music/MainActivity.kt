@@ -149,7 +149,7 @@ class MainActivity : ComponentActivity() {
                 }
 
                 // Tapping the "Update available" notification opens Profile
-                LaunchedEffect(openProfileRequest.value) {
+                androidx.compose.runtime.LaunchedEffect(openProfileRequest.value) {
                     if (openProfileRequest.value) {
                         openProfileRequest.value = false
                         navController.navigate("profile") { launchSingleTop = true }
