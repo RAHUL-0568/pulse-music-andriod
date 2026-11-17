@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="512"
+    android:viewportHeight="512">
+
+    <!-- Vinyl Record - outer ring -->
+    <path
+        android:pathData="M 76,256 A 180,180 0 1,0 436,256 A 180,180 0 1,0 76,256 Z"
+        android:fillColor="#1A1A1A"
+        android:strokeColor="#2A2A2A"
+        android:strokeWidth="2"/>
+
+    <!-- Vinyl Record - mid ring -->
+    <path
+        android:pathData="M 116,256 A 140,140 0 1,0 396,256 A 140,140 0 1,0 116,256 Z"
+        android:fillColor="#1A1A1A"
+        android:strokeColor="#2A2A2A"
+        android:strokeWidth="2"/>
+
+    <!-- Vinyl Record - inner ring -->
+    <path
+        android:pathData="M 156,256 A 100,100 0 1,0 356,256 A 100,100 0 1,0 156,256 Z"
+        android:fillColor="#1A1A1A"
+        android:strokeColor="#2A2A2A"
+        android:strokeWidth="2"/>
+
+    <!-- Center hole -->
+    <path
+        android:pathData="M 236,256 A 20,20 0 1,0 276,256 A 20,20 0 1,0 236,256 Z"
+        android:fillColor="#0A0A0A"/>
+
+    <!-- ECG Pulse Wave - blue -->
+    <path
+        android:pathData="M120,256 L180,256 L210,160 L260,352 L300,220 L330,256 L392,256"
+        android:fillColor="#00000000"
+        android:strokeColor="#4DA8FF"
+        android:strokeWidth="16"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"/>
+
+    <!-- ECG Pulse Wave - white highlight (99 hex = ~60% opacity) -->
+    <path
+        android:pathData="M120,256 L180,256 L210,160 L260,352 L300,220 L330,256 L392,256"
+        android:fillColor="#00000000"
+        android:strokeColor="#99FFFFFF"
+        android:strokeWidth="4"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"/>
+
+</vector>

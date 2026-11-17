@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="#1A1A1A"
+    android:minHeight="128dp">
+
+    <!-- Full-bleed album artwork background -->
+    <ImageView
+        android:id="@+id/notification_bg"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scaleType="centerCrop"
+        android:alpha="1.0" />
+
+    <!-- Dark overlay for readability -->
+    <View
+        android:id="@+id/notification_overlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#66000000" />
+
+    <!-- Content -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:minHeight="128dp">
+
+        <!-- Top section: art + info + controls -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:padding="16dp"
+            android:gravity="center_vertical"
+            android:minHeight="100dp">
+
+            <!-- Square album art thumbnail -->
+            <ImageView
+                android:id="@+id/notification_art"
+                android:layout_width="64dp"
+                android:layout_height="64dp"
+                android:scaleType="centerCrop" />
+
+            <!-- Title + Artist -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:layout_marginStart="14dp"
+                android:layout_marginEnd="8dp">
+
+                <TextView
+                    android:id="@+id/notification_title"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="#FFFFFF"
+                    android:textSize="15sp"
+                    android:textStyle="bold"
+                    android:maxLines="1"
+                    android:ellipsize="end" />
+
+                <TextView
+                    android:id="@+id/notification_artist"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="#B3FFFFFF"
+                    android:textSize="13sp"
+                    android:layout_marginTop="2dp"
+                    android:maxLines="1"
+                    android:ellipsize="end" />
+            </LinearLayout>
+
+            <!-- Playback controls -->
+            <ImageButton
+                android:id="@+id/notification_prev"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:src="@android:drawable/ic_media_previous"
+                android:tint="#FFFFFF"
+                android:scaleType="fitCenter" />
+
+            <ImageButton
+                android:id="@+id/notification_play_pause"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:layout_marginStart="8dp"
+                android:layout_marginEnd="8dp"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:src="@android:drawable/ic_media_play"
+                android:tint="#FFFFFF"
+                android:scaleType="fitCenter" />
+
+            <ImageButton
+                android:id="@+id/notification_next"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:src="@android:drawable/ic_media_next"
+                android:tint="#FFFFFF"
+                android:scaleType="fitCenter" />
+        </LinearLayout>
+
+        <!-- Progress bar at bottom -->
+        <ProgressBar
+            android:id="@+id/notification_progress"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent"
+            android:layout_height="3dp"
+            android:progressDrawable="@android:drawable/progress_horizontal"
+            android:progressTint="#1DB954"
+            android:progressBackgroundTint="#33FFFFFF" />
+
+    </LinearLayout>
+</FrameLayout>

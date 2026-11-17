@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Pulse Music</string>
+    <!-- TODO: Replace with your actual Facebook App ID and Client Token -->
+    <string name="facebook_app_id">1478974146784254</string>
+    <string name="facebook_client_token">519eb28ec2bc04b91f6ac1f09ba05c74</string>
+    <string name="fb_login_protocol_scheme">fb1478974146784254</string>
+    
+    <!-- Google OAuth Web Client ID -->
+    <string name="default_web_client_id">217687474888-5151b2u1grl7a62omop5ui48995f4eto.apps.googleusercontent.com</string>
+</resources>
