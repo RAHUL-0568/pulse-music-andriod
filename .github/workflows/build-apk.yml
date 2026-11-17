@@ -10,7 +10,7 @@ on:
         required: false
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -45,5 +45,11 @@ jobs:
           name: pulse-debug-apk
           path: pulse-android/app/build/outputs/apk/debug/*.apk
 
-
+      - name: Publish APK as a download link
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp pulse-android/app/build/outputs/apk/debug/app-debug.apk Pulse-Music-debug.apk
+          gh release delete debug-latest --yes --cleanup-tag || true
+          gh release create debug-latest Pulse-Music-debug.apk --prerelease --target "$GITHUB_SHA" --title "Pulse Music debug build" --notes "Debug build of the native app. Built from the feature/native-kotlin-app branch." 
 
