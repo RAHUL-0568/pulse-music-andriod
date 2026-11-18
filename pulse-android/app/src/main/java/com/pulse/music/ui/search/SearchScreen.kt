@@ -20,6 +20,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -55,6 +57,36 @@ fun SearchScreen(
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
     val isJamConnected by com.pulse.music.ui.jam.JamSessionManager.isConnected.collectAsState()
 
+    // Voice search: hands off to the system speech recogniser, then searches what was said.
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val voiceLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val spoken = result.data
+            ?.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS)
+            ?.firstOrNull()
+            ?.trim()
+        if (result.resultCode == android.app.Activity.RESULT_OK && !spoken.isNullOrBlank()) {
+            viewModel.setQuery(spoken)
+            focusManager.clearFocus()
+        }
+    }
+    val startVoiceSearch = {
+        val intent = android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(
+                android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
+            )
+            putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT, "Say a song or artist")
+            putExtra(android.speech.RecognizerIntent.EXTRA_MAX_RESULTS, 3)
+        }
+        try {
+            voiceLauncher.launch(intent)
+        } catch (e: Exception) {
+            android.widget.Toast.makeText(context, "Voice search isn't available on this device", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+
     // Gives the debounced search time to start before we claim "no results".
     var settled by remember { mutableStateOf(false) }
     LaunchedEffect(uiState.query) {
@@ -72,8 +104,10 @@ fun SearchScreen(
                         Text(
                             "Search",
                             color = Color.White,
-                            fontSize = 32.sp,
-                            fontWeight = FontWeight.Bold,
+                            fontSize = 34.sp,
+                            fontFamily = com.pulse.music.ui.theme.SoraFamily,
+                            letterSpacing = (-1.0).sp,
+                            fontWeight = FontWeight.ExtraBold,
                             modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 4.dp)
                         )
                     }
@@ -116,9 +150,14 @@ fun SearchScreen(
                             shape = RoundedCornerShape(16.dp),
                             singleLine = true,
                             trailingIcon = {
-                                if (uiState.query.isNotEmpty()) {
-                                    IconButton(onClick = { viewModel.setQuery("") }) {
-                                        Icon(Icons.Default.Close, contentDescription = "Clear", tint = SearchMuted)
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    if (uiState.query.isNotEmpty()) {
+                                        IconButton(onClick = { viewModel.setQuery("") }) {
+                                            Icon(Icons.Default.Close, contentDescription = "Clear", tint = SearchMuted)
+                                        }
+                                    }
+                                    IconButton(onClick = { startVoiceSearch() }) {
+                                        Icon(Icons.Default.Mic, contentDescription = "Voice search", tint = Color(0xFFFF6B5E))
                                     }
                                 }
                             }
@@ -223,9 +262,10 @@ fun SearchScreen(
                 if (!isSearchBarFocused) {
                     item {
                         Text(
-                            "Browse channels",
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Bold,
+                            "Browse all",
+                            fontSize = 22.sp,
+                            letterSpacing = (-0.4).sp,
+                            fontWeight = FontWeight.ExtraBold,
                             color = Color.White,
                             modifier = Modifier.padding(top = 16.dp, bottom = 12.dp)
                         )
@@ -254,7 +294,7 @@ fun SearchScreen(
                                         // Neutral tile if the API failed so we don't break layout
                                         Box(
                                             modifier = Modifier
-                                                .height(104.dp)
+                                                .height(112.dp)
                                                 .fillMaxWidth()
                                                 .clip(RoundedCornerShape(16.dp))
                                                 .background(SearchCardBg)
@@ -694,15 +734,15 @@ fun SkeletonCircle() {
     }
 }
 
-// Muted, non-violet tints used behind category artwork.
+// Duotone washes laid over each mood's artwork.
 val searchCategoryColors = listOf(
-    Color(0xFFB3202D), // Red
-    Color(0xFFC25A1B), // Orange
-    Color(0xFF1F6FB3), // Blue
-    Color(0xFF117A6E), // Teal
-    Color(0xFF2E8B4F), // Green
-    Color(0xFFB8860B), // Gold
-    Color(0xFFB02A62)  // Rose
+    Color(0xFF6A2C91), // Plum
+    Color(0xFFE4572E), // Ember
+    Color(0xFF1B6CA8), // Ocean
+    Color(0xFF2F7D5B), // Moss
+    Color(0xFFD99A00), // Saffron
+    Color(0xFFB5179E), // Orchid
+    Color(0xFF3A4A8F)  // Indigo
 )
 
 fun getColorForTitle(title: String): Color {
@@ -717,15 +757,14 @@ fun CategoryCard(
     onClick: () -> Unit
 ) {
     val tint = getColorForTitle(title)
-    val shape = RoundedCornerShape(16.dp)
+    val shape = RoundedCornerShape(22.dp)
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(104.dp)
+            .height(112.dp)
             .clip(shape)
-            .background(tint.copy(alpha = 0.45f))
-            .border(1.dp, SearchBorderStrong, shape)
+            .background(tint)
             .clickable { onClick() }
     ) {
         if (!imageUrl.isNullOrEmpty()) {
@@ -736,35 +775,41 @@ fun CategoryCard(
                 contentScale = ContentScale.Crop
             )
         }
+        // colour wash: strong tint at the bottom, artwork breathing through at the top
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(
                     Brush.verticalGradient(
-                        colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.85f))
+                        0f to tint.copy(alpha = 0.25f),
+                        1f to tint.copy(alpha = 0.92f)
                     )
                 )
         )
         Text(
             text = title,
             color = Color.White,
-            fontSize = 16.sp,
+            fontSize = 15.sp,
+            fontFamily = com.pulse.music.ui.theme.SoraFamily,
             fontWeight = FontWeight.Bold,
-            maxLines = 2,
+            letterSpacing = (-0.3).sp,
+            maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier
                 .align(Alignment.BottomStart)
-                .padding(start = 12.dp, end = 12.dp, bottom = 12.dp)
+                .padding(10.dp)
+                .clip(RoundedCornerShape(50))
+                .background(Color(0x40000000))
+                .padding(horizontal = 12.dp, vertical = 6.dp)
         )
     }
 }
-
 @Composable
 fun SkeletonCategoryCard() {
     SkeletonBox(
         modifier = Modifier
             .fillMaxWidth()
-            .height(104.dp)
+            .height(112.dp)
             .clip(RoundedCornerShape(16.dp))
     )
 }

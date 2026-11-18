@@ -1,4 +1,6 @@
-﻿package com.pulse.music.ui.nowplaying
+package com.pulse.music.ui.nowplaying
+
+import androidx.compose.ui.graphics.graphicsLayer
 
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.draw.shadow
@@ -128,12 +130,13 @@ fun NowPlayingScreen(
                 animationSpec = androidx.compose.animation.core.tween(800),
                 label = "now_playing_crossfade"
             ) { art ->
-                val overlayColor = Color(0xFF000000).copy(alpha = 0.72f)
+                val overlayColor = Color(0xFF000000).copy(alpha = 0.6f)
                 coil.compose.AsyncImage(
                     model = art,
                     contentDescription = null,
                     modifier = Modifier
                         .fillMaxSize()
+                        .androidx_scale()
                         .blur(radius = 80.dp)
                         .drawWithContent {
                             drawContent()
@@ -459,10 +462,20 @@ fun MainPlayerContent(
                 contentAlignment = Alignment.Center
             ) {
             val side = if (maxWidth < maxHeight) maxWidth else maxHeight
+            // Apple Music-style: artwork "breathes" down a little when paused
+            val artScale by androidx.compose.animation.core.animateFloatAsState(
+                targetValue = if (isPlaying) 1f else 0.86f,
+                animationSpec = androidx.compose.animation.core.spring(
+                    dampingRatio = 0.7f,
+                    stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow
+                ),
+                label = "art_scale"
+            )
             Box(modifier = Modifier
                 .size(side.coerceAtLeast(120.dp))
-                .shadow(24.dp, RoundedCornerShape(16.dp), clip = false)
-                .clip(RoundedCornerShape(16.dp))
+                .graphicsLayer(scaleX = artScale, scaleY = artScale)
+                .shadow(if (isPlaying) 32.dp else 12.dp, RoundedCornerShape(22.dp), clip = false)
+                .clip(RoundedCornerShape(22.dp))
                 .background(Color(0xFF141414)),
                 contentAlignment = Alignment.Center
             ) {
@@ -642,8 +655,9 @@ fun MainPlayerContent(
         ) {
             Text(
                 text = "Made by Rahul",
-                color = Color(0xFF9A9A9A),
-                fontSize = 12.sp,
+                color = Color(0x66FFFFFF),
+                fontSize = 11.sp,
+                letterSpacing = 0.8.sp,
                 fontWeight = FontWeight.Medium
             )
         }
@@ -1164,3 +1178,8 @@ fun LyricsPanel(lyrics: List<LyricLine>, highlightedIndex: Int, onClose: () -> U
         }
     }
 }
+
+
+/** Over-scales the blurred backdrop so blur never leaves a dark fringe at the screen edges. */
+private fun androidx.compose.ui.Modifier.androidx_scale(): androidx.compose.ui.Modifier =
+    this.graphicsLayer(scaleX = 1.3f, scaleY = 1.3f)

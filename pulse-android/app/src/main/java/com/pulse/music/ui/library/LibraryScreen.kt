@@ -165,8 +165,10 @@ fun LibraryScreen(
                         Text(
                             "Your Library", 
                             color = MaterialTheme.colorScheme.onBackground, 
-                            fontSize = 34.sp, 
-                            fontWeight = FontWeight.Bold
+                            fontSize = 34.sp,
+                            fontFamily = com.pulse.music.ui.theme.SoraFamily,
+                            letterSpacing = (-1.0).sp,
+                            fontWeight = FontWeight.ExtraBold
                         )
                     }
                 }

@@ -102,19 +102,56 @@ fun HomeScreen(
         return
     }
     
+    val listState = rememberLazyListState()
+    val scrolled by remember { derivedStateOf { listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 120 } }
+    val topBarColor by androidx.compose.animation.animateColorAsState(
+        targetValue = if (scrolled) Color(0xFF14090D) else Color.Transparent,
+        animationSpec = tween(200),
+        label = "home_topbar"
+    )
+    Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(380.dp)
+            .background(
+                Brush.verticalGradient(
+                    listOf(Color(0x55FF3B4E), Color(0x22D81B60), Color.Transparent)
+                )
+            )
+    )
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
+        containerColor = Color.Transparent,
         topBar = {
             TopAppBar(
                 title = {
-                    Image(
-                        painter = painterResource(id = R.drawable.ic_launcher_foreground),
-                        contentDescription = "Pulse Music Logo",
-                        modifier = Modifier.size(36.dp)
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(30.dp)
+                                .clip(RoundedCornerShape(9.dp))
+                                .background(com.pulse.music.ui.theme.PulseGradient),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Image(
+                                painter = painterResource(id = R.drawable.ic_launcher_foreground),
+                                contentDescription = "Pulse Music Logo",
+                                modifier = Modifier.size(44.dp)
+                            )
+                        }
+                        Spacer(Modifier.width(10.dp))
+                        Text(
+                            "Pulse",
+                            fontSize = 22.sp,
+                            fontFamily = com.pulse.music.ui.theme.SoraFamily,
+                            fontWeight = FontWeight.ExtraBold,
+                            letterSpacing = (-0.6).sp,
+                            color = Color.White
+                        )
+                    }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
+                    containerColor = topBarColor,
                     titleContentColor = MaterialTheme.colorScheme.onBackground,
                     actionIconContentColor = MaterialTheme.colorScheme.onBackground
                 ),
@@ -152,6 +189,7 @@ fun HomeScreen(
         }
     ) { padding ->
         LazyColumn(
+            state = listState,
             contentPadding = padding,
             modifier = Modifier.fillMaxSize()
         ) {
@@ -162,16 +200,10 @@ fun HomeScreen(
                     in 17..21 -> "Good evening"
                     else -> "Late night"
                 }
-                Column(modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 4.dp)) {
-                    Text(text = daypart, fontSize = 14.sp, color = Color(0xFF9A9A9A))
-                    Text(
-                        text = username?.takeIf { it.isNotBlank() } ?: "Welcome",
-                        fontSize = 32.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onBackground,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                Column(modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 8.dp)) {
+                    com.pulse.music.ui.components.PulseLine(modifier = Modifier.padding(top = 4.dp))
                 }
             }
             
@@ -184,13 +216,27 @@ fun HomeScreen(
                     item { HomeErrorCard(message = state.message, onRetry = { viewModel.loadData(background = false) }) }
                 }
                 is HomeUiState.Success -> {
-                    if (state.recentPlays.isNotEmpty()) {
+                    // Hero: the one thing to play right now
+                    val heroSong = state.recentPlays.firstOrNull() ?: state.suggested.firstOrNull()
+                    if (heroSong != null) {
+                        item {
+                            HeroCard(
+                                song = heroSong,
+                                label = if (state.recentPlays.isNotEmpty()) "CONTINUE LISTENING" else "PICKED FOR YOU",
+                                onPlay = {
+                                    viewModel.playSong(heroSong, if (state.recentPlays.isNotEmpty()) state.recentPlays else state.suggested)
+                                    onNavigateToNowPlaying()
+                                }
+                            )
+                        }
+                    }
+                                        if (state.recentPlays.isNotEmpty()) {
                         item {
                             SectionTitle(
                                 title = "Recently Played", 
                                 onSeeAll = if ((state.allRecentPlays?.size ?: 0) > 5) { { showHistory = true } } else null
                             )
-                            LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp), contentPadding = PaddingValues(horizontal = 16.dp)) {
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp), contentPadding = PaddingValues(horizontal = 20.dp)) {
                                 items(state.recentPlays) { song ->
                                     SongCard(song, onRemove = {
                                         viewModel.removeRecentSong(song)
@@ -274,7 +320,7 @@ fun HomeScreen(
                         if (module.items.isNotEmpty()) {
                             item {
                                 SectionTitle(module.title)
-                                LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp), contentPadding = PaddingValues(horizontal = 16.dp)) {
+                                LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp), contentPadding = PaddingValues(horizontal = 20.dp)) {
                                     items(module.items) { playlist ->
                                         PlaylistCard(
                                             playlist = com.pulse.music.domain.Playlist(
@@ -295,8 +341,9 @@ fun HomeScreen(
             }
             
             // Proper bottom safe area padding to scroll behind the floating nav bar
-            item { Spacer(modifier = Modifier.height(140.dp)) }
+            item { Spacer(modifier = Modifier.height(160.dp)) }
         }
+    }
     }
 }
 
@@ -315,12 +362,12 @@ fun PlaylistRowSkeleton() {
         )
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.padding(horizontal = 16.dp)) {
             repeat(3) {
-                Column(modifier = Modifier.width(150.dp)) {
+                Column(modifier = Modifier.width(160.dp)) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .aspectRatio(1f)
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(RoundedCornerShape(18.dp))
                             .background(brush)
                     )
                     Spacer(Modifier.height(12.dp))
@@ -346,7 +393,7 @@ fun HomeErrorCard(message: String, onRetry: () -> Unit) {
             .padding(horizontal = 24.dp, vertical = 48.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Icon(Icons.Default.CloudOff, contentDescription = null, tint = Color(0xFF9A9A9A), modifier = Modifier.size(48.dp))
+        Icon(Icons.Default.CloudOff, contentDescription = null, tint = Color(0xFF8E8E9A), modifier = Modifier.size(48.dp))
         Spacer(Modifier.height(16.dp))
         Text(
             text = message,
@@ -370,25 +417,28 @@ fun SectionTitle(title: String, onSeeAll: (() -> Unit)? = null) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 16.dp, end = 16.dp, top = 32.dp, bottom = 16.dp),
+            .padding(start = 20.dp, end = 20.dp, top = 28.dp, bottom = 14.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.Bottom
     ) {
         Text(
             text = title,
             fontSize = 22.sp,
+            fontFamily = com.pulse.music.ui.theme.SoraFamily,
+            letterSpacing = (-0.6).sp,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onBackground
         )
         if (onSeeAll != null) {
             Text(
-                text = "See All",
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Medium,
-                color = Color.Gray,
+                text = "See all",
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = Color(0xFFFF6B5E),
                 modifier = Modifier
+                    .clip(RoundedCornerShape(50))
                     .clickable(onClick = onSeeAll)
-                    .padding(4.dp)
+                    .padding(horizontal = 10.dp, vertical = 4.dp)
             )
         }
     }
@@ -398,7 +448,7 @@ fun SectionTitle(title: String, onSeeAll: (() -> Unit)? = null) {
 fun SongCard(song: Song, onRemove: (() -> Unit)? = null, onClick: () -> Unit = {}) {
     Column(
         modifier = Modifier
-            .width(150.dp)
+            .width(160.dp)
             .clickable(onClick = onClick)
     ) {
         Box {
@@ -409,7 +459,7 @@ fun SongCard(song: Song, onRemove: (() -> Unit)? = null, onClick: () -> Unit = {
                     modifier = Modifier
                         .fillMaxWidth()
                         .aspectRatio(1f)
-                        .clip(RoundedCornerShape(8.dp)),
+                        .clip(RoundedCornerShape(18.dp)),
                     contentScale = ContentScale.Crop
                 )
             } else {
@@ -417,23 +467,25 @@ fun SongCard(song: Song, onRemove: (() -> Unit)? = null, onClick: () -> Unit = {
                     modifier = Modifier
                         .fillMaxWidth()
                         .aspectRatio(1f)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(Color(0xFF242424)),
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(Color(0xFF22222B)),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(Icons.Default.MusicNote, contentDescription = "Music", tint = Color.Gray, modifier = Modifier.size(48.dp))
                 }
             }
             if (onRemove != null) {
-                IconButton(
-                    onClick = onRemove,
+                Box(
+                    contentAlignment = Alignment.Center,
                     modifier = Modifier
                         .align(Alignment.TopEnd)
-                        .padding(4.dp)
-                        .size(24.dp)
-                        .background(MaterialTheme.colorScheme.background.copy(alpha = 0.5f), androidx.compose.foundation.shape.CircleShape)
+                        .padding(8.dp)
+                        .size(26.dp)
+                        .clip(CircleShape)
+                        .background(Color(0x99000000))
+                        .clickable(onClick = onRemove)
                 ) {
-                    Icon(Icons.Default.Close, contentDescription = "Remove", tint = MaterialTheme.colorScheme.onBackground, modifier = Modifier.size(16.dp))
+                    Icon(Icons.Default.Close, contentDescription = "Remove", tint = Color.White, modifier = Modifier.size(14.dp))
                 }
             }
         }
@@ -590,7 +642,7 @@ fun SongRowItem(song: Song, onClick: () -> Unit) {
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .background(Color(0xFF242424)),
+                                .background(Color(0xFF22222B)),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
@@ -655,7 +707,7 @@ fun SongRowItem(song: Song, onClick: () -> Unit) {
 fun PlaylistCard(playlist: com.pulse.music.domain.Playlist, onClick: () -> Unit = {}) {
     Column(
         modifier = Modifier
-            .width(150.dp)
+            .width(160.dp)
             .clickable(onClick = onClick)
     ) {
         if (!playlist.image.isNullOrEmpty()) {
@@ -665,7 +717,7 @@ fun PlaylistCard(playlist: com.pulse.music.domain.Playlist, onClick: () -> Unit 
                 modifier = Modifier
                     .fillMaxWidth()
                     .aspectRatio(1f)
-                    .clip(RoundedCornerShape(8.dp)),
+                    .clip(RoundedCornerShape(18.dp)),
                 contentScale = ContentScale.Crop
             )
         } else {
@@ -673,8 +725,8 @@ fun PlaylistCard(playlist: com.pulse.music.domain.Playlist, onClick: () -> Unit 
                 modifier = Modifier
                     .fillMaxWidth()
                     .aspectRatio(1f)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Color(0xFF242424)),
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(Color(0xFF22222B)),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(Icons.Default.PlaylistPlay, contentDescription = "Playlist", tint = Color.Gray, modifier = Modifier.size(48.dp))
@@ -706,7 +758,7 @@ fun PlaylistCard(playlist: com.pulse.music.domain.Playlist, onClick: () -> Unit 
 fun ArtistCard(artist: com.pulse.music.domain.Artist, onClick: () -> Unit = {}) {
     Column(
         modifier = Modifier
-            .width(150.dp)
+            .width(160.dp)
             .clickable(onClick = onClick),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -726,7 +778,7 @@ fun ArtistCard(artist: com.pulse.music.domain.Artist, onClick: () -> Unit = {}) 
                     .fillMaxWidth()
                     .aspectRatio(1f)
                     .clip(androidx.compose.foundation.shape.CircleShape)
-                    .background(Color(0xFF242424)),
+                    .background(Color(0xFF22222B)),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(Icons.Default.Person, contentDescription = "Artist", tint = Color.Gray, modifier = Modifier.size(48.dp))
@@ -786,15 +838,15 @@ fun RecentlyPlayedScreen(
                             contentDescription = song.title,
                             modifier = Modifier
                                 .size(56.dp)
-                                .clip(RoundedCornerShape(8.dp)),
+                                .clip(RoundedCornerShape(18.dp)),
                             contentScale = ContentScale.Crop
                         )
                     } else {
                         Box(
                             modifier = Modifier
                                 .size(56.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Color(0xFF242424)),
+                                .clip(RoundedCornerShape(18.dp))
+                                .background(Color(0xFF22222B)),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(Icons.Default.MusicNote, contentDescription = null, tint = Color.Gray)
@@ -823,6 +875,93 @@ fun RecentlyPlayedScreen(
                         Icon(Icons.Default.Close, contentDescription = "Remove", tint = Color.Gray, modifier = Modifier.size(20.dp))
                     }
                 }
+            }
+        }
+    }
+}
+
+/** Featured card: full-bleed artwork, a clear label, and one obvious action. */
+@Composable
+fun HeroCard(song: Song, label: String, onPlay: () -> Unit) {
+    val shape = RoundedCornerShape(30.dp)
+    Box(
+        modifier = Modifier
+            .padding(horizontal = 20.dp, vertical = 14.dp)
+            .fillMaxWidth()
+            .height(250.dp)
+            .shadow(24.dp, shape, ambientColor = Color(0xFFFF3B4E), spotColor = Color(0xFFFF3B4E))
+            .clip(shape)
+            .background(Color(0xFF1B1B22))
+            .border(1.dp, Color(0x1FFFFFFF), shape)
+            .clickable(onClick = onPlay)
+    ) {
+        if (!song.albumArt.isNullOrEmpty()) {
+            AsyncImage(
+                model = song.albumArt,
+                contentDescription = song.title,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+        }
+        Box(
+            modifier = Modifier.fillMaxSize().background(
+                Brush.verticalGradient(
+                    0.35f to Color.Transparent,
+                    1f to Color(0xF0050507)
+                )
+            )
+        )
+        Text(
+            text = label,
+            color = Color.White,
+            fontSize = 10.5.sp,
+            letterSpacing = 1.4.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier
+                .padding(16.dp)
+                .clip(RoundedCornerShape(50))
+                .background(Color(0x66000000))
+                .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(50))
+                .padding(horizontal = 12.dp, vertical = 6.dp)
+        )
+        Row(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .fillMaxWidth()
+                .padding(start = 20.dp, end = 16.dp, bottom = 18.dp),
+            verticalAlignment = Alignment.Bottom
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = song.title,
+                    color = Color.White,
+                    fontSize = 24.sp,
+                    fontFamily = com.pulse.music.ui.theme.SoraFamily,
+                    fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = (-0.7).sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = song.artist,
+                    color = Color(0xCCFFFFFF),
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Box(
+                modifier = Modifier
+                    .size(56.dp)
+                    .shadow(12.dp, CircleShape, spotColor = Color(0xFFFF3B4E))
+                    .clip(CircleShape)
+                    .background(com.pulse.music.ui.theme.PulseGradient),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Default.PlayArrow, contentDescription = "Play", tint = Color.White, modifier = Modifier.size(32.dp))
             }
         }
     }

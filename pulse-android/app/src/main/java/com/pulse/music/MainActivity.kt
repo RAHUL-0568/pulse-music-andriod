@@ -7,6 +7,9 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -389,6 +392,7 @@ class MainActivity : ComponentActivity() {
                                     onSkipPrev = { musicPlayerManager.skipToPreviousTrack() },
                                     onClick = { navController.navigate("now_playing") }
                                 )
+                                Spacer(modifier = Modifier.height(6.dp))
                             }
 
                             if (showBottomNav) {
@@ -406,10 +410,35 @@ class MainActivity : ComponentActivity() {
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .height(80.dp)
-                                            .clip(RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp))
-                                            .background(Color.Transparent)
-                                            .padding(bottom = 12.dp, top = 8.dp),
+                                            .height(64.dp)
+                                            // Feathered glass: no border, no hard edge. It starts above the bar and
+                                            // fades in, so content melts into it instead of being cut off.
+                                            .drawBehind {
+                                                if (showMiniPlayer && currentSong != null) {
+                                                    // Mini player above: solid black bar + a small black gap, so the two read as separate
+                                                    val gap = 6.dp.toPx()
+                                                    drawRect(
+                                                        color = Color(0xFF000000),
+                                                        topLeft = androidx.compose.ui.geometry.Offset(0f, -gap),
+                                                        size = androidx.compose.ui.geometry.Size(size.width, size.height + gap)
+                                                    )
+                                                    return@drawBehind
+                                                }
+                                                val feather = 44.dp.toPx()
+                                                drawRect(
+                                                    brush = Brush.verticalGradient(
+                                                        0f to Color(0x00000000),
+                                                        0.30f to Color(0xB3000000),
+                                                        0.55f to Color(0xEB000000),
+                                                        1f to Color(0xFA000000),
+                                                        startY = -feather,
+                                                        endY = size.height
+                                                    ),
+                                                    topLeft = androidx.compose.ui.geometry.Offset(0f, -feather),
+                                                    size = androidx.compose.ui.geometry.Size(size.width, size.height + feather)
+                                                )
+                                            }
+                                            .padding(bottom = 0.dp, top = 6.dp),
                                         horizontalArrangement = Arrangement.SpaceAround,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
@@ -625,14 +654,15 @@ fun MiniPlayerCard(
     onToggleShuffle: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
+    val songColor = com.pulse.music.ui.components.rememberDominantColor(song.albumArt)
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .height(64.dp)
-            .clip(RoundedCornerShape(8.dp)),
-        color = Color(0xFF242424),
-        shadowElevation = 8.dp,
-        tonalElevation = 8.dp
+            .height(68.dp)
+            .clip(RoundedCornerShape(20.dp)),
+        color = songColor,
+        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x14FFFFFF)),
+        shadowElevation = 12.dp
     ) {
         Row(
             modifier = Modifier
@@ -642,9 +672,9 @@ fun MiniPlayerCard(
         ) {
             Box(
                 modifier = Modifier
-                    .size(48.dp)
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(Color(0xFF3E3E3E)),
+                    .size(50.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0xFF2E2E38)),
                 contentAlignment = Alignment.Center
             ) {
                 if (!song.albumArt.isNullOrEmpty()) {
@@ -693,15 +723,23 @@ fun MiniPlayerCard(
                         )
                     }
                 }
-                IconButton(onClick = onTogglePlay, modifier = Modifier.size(48.dp)) {
+                Box(
+                    modifier = Modifier
+                        .padding(end = 4.dp)
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(Color.White)
+                        .clickable(onClick = onTogglePlay),
+                    contentAlignment = Alignment.Center
+                ) {
                     if (isBuffering) {
-                        CircularProgressIndicator(color = Color.White, strokeWidth = 2.5.dp, modifier = Modifier.size(24.dp))
+                        CircularProgressIndicator(color = Color.Black, strokeWidth = 2.5.dp, modifier = Modifier.size(22.dp))
                     } else {
                         Icon(
                             if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                             contentDescription = "Play/Pause",
-                            tint = Color.White,
-                            modifier = Modifier.size(28.dp)
+                            tint = Color.Black,
+                            modifier = Modifier.size(26.dp)
                         )
                     }
                 }

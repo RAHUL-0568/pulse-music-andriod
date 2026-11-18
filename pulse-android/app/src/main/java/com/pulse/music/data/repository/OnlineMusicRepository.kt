@@ -26,6 +26,14 @@ class OnlineMusicRepository @Inject constructor(
         }
     }
     
+    suspend fun searchByLyrics(lyricLine: String): Result<SearchResponse> {
+        return try {
+            Result.success(apiService.searchByLyrics(lyricLine))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     suspend fun getLyrics(title: String, artist: String, songId: String? = null): Result<Lyrics> {
         return try {
             Result.success(apiService.getLyrics(title, artist, songId))

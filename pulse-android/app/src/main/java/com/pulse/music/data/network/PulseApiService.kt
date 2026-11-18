@@ -40,6 +40,10 @@ interface PulseApiService {
         @Query("type") type: String = "song"
     ): SearchResponse
 
+    /** Finds songs from a line of lyrics. Needs the matching backend route; callers must tolerate failure. */
+    @GET("api/v1/search/lyrics")
+    suspend fun searchByLyrics(@Query("q") query: String): SearchResponse
+
     @GET("api/v1/lyrics")
     suspend fun getLyrics(
         @Query("title") title: String,

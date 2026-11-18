@@ -13,6 +13,9 @@ import com.pulse.music.domain.Song
 import com.pulse.music.player.MusicPlayerManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -207,7 +210,8 @@ class SearchViewModel @Inject constructor(
                 try {
                     val artistRes = onlineRepo.getArtistInfo(query)
                     val artist = artistRes.getOrNull()
-                    if (artist != null && artist.name.isNotEmpty()) {
+                    // A real artist has a picture; a sung line is never an artist name.
+                    if (artist != null && artist.name.isNotEmpty() && !artist.image.isNullOrEmpty() && !SearchRanker.looksLikeLyrics(query)) {
                         _uiState.update { it.copy(exactArtist = artist, isExactArtistLoading = false) }
                     } else {
                         _uiState.update { it.copy(isExactArtistLoading = false) }
@@ -227,9 +231,37 @@ class SearchViewModel @Inject constructor(
 
                     val res = onlineRepo.searchOnline(query)
                     res.onSuccess { response ->
-                        val combinedSongs = (response.songs + localSongs).distinctBy { "${it.title.lowercase()}_${it.artist.lowercase()}" }
+                        var combinedSongs = SearchRanker.rank(
+                            (response.songs + localSongs).distinctBy { "${it.title.lowercase()}_${it.artist.lowercase()}" },
+                            query
+                        )
                         if (response.songs.isNotEmpty()) {
                             songDao.insertSongs(response.songs.map { SongEntity(it.id, it.title, it.artist, it.album, it.albumArt, it.source) })
+                        }
+                        // Weak results (typo, song + singer typed together)? Try smarter sub-queries,
+                        // merge everything and re-rank by relevance.
+                        if (SearchRanker.bestScore(combinedSongs, query) < 0.9) {
+                            val extra: List<Song> = coroutineScope {
+                                SearchRanker.variants(query)
+                                    .map { v -> async { onlineRepo.searchOnline(v).getOrNull()?.songs.orEmpty() } }
+                                    .awaitAll()
+                                    .flatten()
+                            }
+                            if (extra.isNotEmpty()) {
+                                combinedSongs = SearchRanker.rank(
+                                    (combinedSongs + extra).distinctBy { "${it.title.lowercase()}_${it.artist.lowercase()}" },
+                                    query
+                                )
+                            }
+                        }
+                        // Looks like a line of lyrics and nothing matched by name? Ask the lyrics search.
+                        // The matches go first, since a lyric hit is far more likely than a fuzzy title hit.
+                        if (SearchRanker.looksLikeLyrics(query) && SearchRanker.bestScore(combinedSongs, query) < 0.75) {
+                            val byLyrics = onlineRepo.searchByLyrics(query).getOrNull()?.songs.orEmpty()
+                            if (byLyrics.isNotEmpty()) {
+                                combinedSongs = (byLyrics + combinedSongs)
+                                    .distinctBy { "${it.title.lowercase()}_${it.artist.lowercase()}" }
+                            }
                         }
                         _uiState.update {
                             it.copy(
