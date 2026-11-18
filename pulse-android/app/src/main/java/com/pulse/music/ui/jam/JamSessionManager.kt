@@ -51,6 +51,13 @@ object JamSessionManager {
     private val _incomingQueueSync = MutableStateFlow<Triple<List<JSONObject>, Int, Long>?>(null)
     val incomingQueueSync: StateFlow<Triple<List<JSONObject>, Int, Long>?> = _incomingQueueSync.asStateFlow()
 
+    private val _incomingQueueAppend = MutableStateFlow<List<JSONObject>?>(null)
+    val incomingQueueAppend: StateFlow<List<JSONObject>?> = _incomingQueueAppend.asStateFlow()
+
+    /** Set by the person who creates a Jam, so it starts from the song they are playing. */
+    @Volatile var seedQueueOnConnect: Boolean = false
+    fun takeSeedFlag(): Boolean { val v = seedQueueOnConnect; seedQueueOnConnect = false; return v }
+
     private val _queue = MutableStateFlow<List<JSONObject>>(emptyList())
     val queue: StateFlow<List<JSONObject>> = _queue.asStateFlow()
 
@@ -150,14 +157,19 @@ object JamSessionManager {
                     }
                     "queue_updated" -> {
                         val queueArray = json.getJSONArray("queue")
-                        val currentIndex = json.optInt("current_index", 0)
-                        val positionMs = json.optLong("position_ms", 0L)
                         val list = mutableListOf<JSONObject>()
                         for (i in 0 until queueArray.length()) {
                             list.add(queueArray.getJSONObject(i))
                         }
                         _queue.value = list
-                        _incomingQueueSync.value = Triple(list, currentIndex, positionMs)
+                        if (json.has("current_index")) {
+                            // The host re-sent the whole queue with the position: apply it fully.
+                            _incomingQueueSync.value = Triple(list, json.optInt("current_index", 0), json.optLong("position_ms", 0L))
+                        } else {
+                            // "Add song": the server sends only the list. Treating the missing position as 0
+                            // restarted the playing song and jumped to the first one, so only append.
+                            _incomingQueueAppend.value = list
+                        }
                     }
                     "shuffle_updated" -> {
                         _incomingShuffle.value = json.optBoolean("enabled")
@@ -187,10 +199,11 @@ object JamSessionManager {
                             )
                             _incomingSongWithSync.value = Pair(song, Pair(isPlaying, position))
                             // Do not overwrite incomingSync, let PlaybackService handle it together
-                        } else {
+                        } else if ((session.optJSONArray("queue")?.length() ?: 0) > 0) {
                             _incomingSync.value = Triple(isPlaying, position, ++_syncCounter)
                         }
-                        
+                        // else: a brand-new empty room says "paused"; that must not stop what you are playing.
+
                         val queueArray = session.optJSONArray("queue")
                         if (queueArray != null) {
                             val list = mutableListOf<JSONObject>()
@@ -374,6 +387,8 @@ object JamSessionManager {
                 }
                 queueJsonArray.put(songJson)
             }
+            // The sender gets no echo from the server, so show what was sent in the Queue tab right away.
+            _queue.value = (0 until queueJsonArray.length()).map { queueJsonArray.getJSONObject(it) }
             val payload = JSONObject().apply {
                 put("event", "sync_queue")
                 put("queue", queueJsonArray)

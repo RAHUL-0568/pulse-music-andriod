@@ -475,7 +475,7 @@ private fun PlaybackSettings(
         SettingRow(
             icon = Icons.Default.HighQuality,
             title = "High quality",
-            description = "Best sound on Wi-Fi. Mobile data always uses data saver.",
+            description = "Best sound on Wi-Fi and mobile data. Turn off to save data.",
             trailing = { PulseSwitch(highQuality) { onUpdate(it, spatialAudio, gapless, crossfade) } }
         )
         HorizontalDivider(color = CardBorder)
@@ -489,7 +489,7 @@ private fun PlaybackSettings(
         SettingRow(
             icon = Icons.Default.SkipNext,
             title = "Gapless playback",
-            description = "No pause between songs",
+            description = "Songs from the same album play straight into each other",
             trailing = { PulseSwitch(gapless) { onUpdate(highQuality, spatialAudio, it, crossfade) } }
         )
         HorizontalDivider(color = CardBorder)

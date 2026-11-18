@@ -126,8 +126,21 @@ class MainActivity : ComponentActivity() {
                 val navBackStackEntry by navController.currentBackStackEntryAsState()
                 val currentRoute = navBackStackEntry?.destination?.route
 
-                val showBottomNav = currentRoute != "now_playing" && currentRoute != "auth_login" && currentRoute != "auth_register" && currentRoute != "auth_forgot_password"
-                val showMiniPlayer = currentRoute != "now_playing" && currentRoute != "auth_login" && currentRoute != "auth_register" && currentRoute != "auth_forgot_password"
+                // While the keyboard is open the mini player and nav bar step aside, so they can never
+                // sit on top of a text box (Jam chat, search, ...).
+                val rootView = LocalView.current
+                var imeVisible by remember { mutableStateOf(false) }
+                androidx.compose.runtime.DisposableEffect(rootView) {
+                    val listener = android.view.ViewTreeObserver.OnGlobalLayoutListener {
+                        imeVisible = androidx.core.view.ViewCompat.getRootWindowInsets(rootView)
+                            ?.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime()) == true
+                    }
+                    rootView.viewTreeObserver.addOnGlobalLayoutListener(listener)
+                    onDispose { rootView.viewTreeObserver.removeOnGlobalLayoutListener(listener) }
+                }
+
+                val showBottomNav = currentRoute != "now_playing" && currentRoute != "auth_login" && currentRoute != "auth_register" && currentRoute != "auth_forgot_password" && !imeVisible
+                val showMiniPlayer = currentRoute != "now_playing" && currentRoute != "auth_login" && currentRoute != "auth_register" && currentRoute != "auth_forgot_password" && !imeVisible
                 val currentSong by musicPlayerManager.currentSong.collectAsState()
                 val isPlaying by musicPlayerManager.isPlaying.collectAsState()
                 val isBuffering by musicPlayerManager.isBuffering.collectAsState()
@@ -185,9 +198,15 @@ class MainActivity : ComponentActivity() {
                 Scaffold { paddingValues ->
                     Box(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
                         Surface(color = Color.Black, modifier = Modifier.fillMaxSize()) {
+                        // Jam screens end in a text box / button; keep them clear of the floating bars.
+                        val onJamScreen = currentRoute?.startsWith("jam") == true
+                        val bottomBarsHeight = if (onJamScreen && !imeVisible) {
+                            (if (showBottomNav) 64.dp else 0.dp) + (if (showMiniPlayer && currentSong != null) 74.dp else 0.dp)
+                        } else 0.dp
                         NavHost(
                             navController = navController,
                             startDestination = startDest,
+                            modifier = Modifier.padding(bottom = bottomBarsHeight),
                             enterTransition = { androidx.compose.animation.fadeIn(animationSpec = androidx.compose.animation.core.tween(180)) },
                             exitTransition = { androidx.compose.animation.fadeOut(animationSpec = androidx.compose.animation.core.tween(180)) },
                             popEnterTransition = { androidx.compose.animation.fadeIn(animationSpec = androidx.compose.animation.core.tween(180)) },

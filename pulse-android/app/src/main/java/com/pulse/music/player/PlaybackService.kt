@@ -115,14 +115,37 @@ class PlaybackService : MediaSessionService() {
             }
         }
         scope.launch {
+            jamSessionManager.incomingQueueAppend.collect { list ->
+                if (list != null && jamSessionManager.isConnected.value) {
+                    val songs = list.map { item ->
+                        com.pulse.music.domain.Song(
+                            id = item.optString("id", item.optString("song_id", "")),
+                            title = item.optString("title", "Unknown Title"),
+                            artist = item.optString("artist", "Unknown Artist"),
+                            albumArt = item.optString("albumArt", ""),
+                            durationMs = item.optLong("durationMs", 0L),
+                            source = item.optString("source", "")
+                        )
+                    }
+                    musicPlayerManager.appendQueueSync(songs)
+                }
+            }
+        }
+        scope.launch {
             jamSessionManager.isConnected.collect { connected ->
-                if (connected && jamSessionManager.isHost) {
-                    val q = musicPlayerManager.queue.value
-                    val curIdx = musicPlayerManager.currentIndex.value.coerceAtLeast(0)
-                    val pos = musicPlayerManager.currentPosition.value
-                    jamSessionManager.broadcastQueue(q, curIdx, pos)
-                    jamSessionManager.broadcastShuffle(musicPlayerManager.shuffleEnabled.value)
-                    jamSessionManager.broadcastRepeat(musicPlayerManager.repeatMode.value.name)
+                if (connected) {
+                    // The queue you had before the Jam must not leak into it.
+                    musicPlayerManager.trimQueueToCurrent()
+                    // The creator starts the Jam from the song they are playing.
+                    if (jamSessionManager.takeSeedFlag()) {
+                        val current = musicPlayerManager.currentSong.value
+                        if (current != null) {
+                            jamSessionManager.broadcastQueue(listOf(current), 0, musicPlayerManager.currentPosition.value)
+                            jamSessionManager.broadcastPlaySong(current)
+                        }
+                        jamSessionManager.broadcastShuffle(musicPlayerManager.shuffleEnabled.value)
+                        jamSessionManager.broadcastRepeat(musicPlayerManager.repeatMode.value.name)
+                    }
                 }
             }
         }

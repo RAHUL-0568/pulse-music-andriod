@@ -45,6 +45,7 @@ class JamViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val newJam = jamRepository.createJam(name)
+                JamSessionManager.seedQueueOnConnect = true // start the Jam from the song that is playing
                 connectToJamSession(newJam.roomCode)
             } catch (e: Exception) {
                 e.printStackTrace()

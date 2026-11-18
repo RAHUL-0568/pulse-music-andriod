@@ -125,16 +125,10 @@ class MusicPlayerManager @Inject constructor(
         return Regex("_(320|160|96)(?:_p)?\\.").find(url)?.groupValues?.get(1) ?: "x"
     }
 
-    /** Best quality only on Wi-Fi (and only if the user left High quality on); ~3x less data on mobile. */
+    /** The High quality switch decides, on Wi-Fi and mobile data alike. Off = data saver (low quality) everywhere. */
     private suspend fun wantHighQuality(): Boolean {
-        val settingOn = try {
-            context.dataStore.data.first()[booleanPreferencesKey("high_quality")] ?: true
-        } catch (e: Exception) { true }
-        if (!settingOn) return false
         return try {
-            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
-            val onMobileData = cm.isActiveNetworkMetered
-            onMobileData.not()
+            context.dataStore.data.first()[booleanPreferencesKey("high_quality")] ?: true
         } catch (e: Exception) { true }
     }
 
@@ -174,7 +168,10 @@ class MusicPlayerManager @Inject constructor(
     val player: ExoPlayer get() = _activePlayerFlow.value
     private var mediaControllerFuture: com.google.common.util.concurrent.ListenableFuture<androidx.media3.session.MediaController>? = null
     private val crossfadeManager = CrossfadeManager()
-    
+
+    /** Gapless playback switch: songs of the same album flow straight into each other, with no crossfade. */
+    @Volatile private var gaplessEnabled = false
+
     // Legacy bridge properties to avoid breaking other parts of the file temporarily if any remain
     private val crossfadeSecs: Int get() = crossfadeManager.crossfadeSecs
     private val isCrossfading: Boolean get() = crossfadeManager.isCrossfading
@@ -214,9 +211,12 @@ class MusicPlayerManager @Inject constructor(
                 if (!com.pulse.music.ui.jam.JamSessionManager.isConnected.value) {
                     crossfadeManager.crossfadeSecs = savedCrossfadeSecs
                 }
-                val gapless = prefs[gaplessKey] ?: false
+                gaplessEnabled = prefs[gaplessKey] ?: false
                 player1.skipSilenceEnabled = false
                 player2.skipSilenceEnabled = false
+                // Turning crossfade on while a song is already playing used to do nothing until the NEXT
+                // song started, because the next track was only pre-loaded at the start of a song.
+                if (crossfadeManager.crossfadeSecs > 0 && player.mediaItemCount > 0) preBufferAlternatePlayer()
             }
         }
         
@@ -353,24 +353,26 @@ class MusicPlayerManager @Inject constructor(
                             val timeLeft = duration - player.currentPosition
                             var actualCrossfadeMs = crossfadeSecs * 1000L
                             
-                            // Temporarily comment out smart gapless so crossfade triggers on ALL tracks
-                            /*
-                            val currentIdx = player.currentMediaItemIndex
-                            if (currentIdx >= 0 && currentIdx < _queue.value.size - 1) {
-                                val currentSong = _queue.value[currentIdx]
-                                val nextSong = _queue.value[currentIdx + 1]
-                                if (!currentSong.album.isNullOrEmpty() && currentSong.album == nextSong.album) {
-                                    actualCrossfadeMs = 0L // Fall back to pure gapless
+                            // Gapless ON: two songs from the same album (a live set, a continuous mix) play straight
+                            // into each other instead of crossfading.
+                            var skipForGapless = false
+                            if (gaplessEnabled) {
+                                val currentIdx = player.currentMediaItemIndex
+                                if (currentIdx >= 0 && currentIdx < _queue.value.size - 1) {
+                                    val currentSong = _queue.value[currentIdx]
+                                    val nextSong = _queue.value[currentIdx + 1]
+                                    if (!currentSong.album.isNullOrEmpty() && currentSong.album == nextSong.album) {
+                                        skipForGapless = true
+                                    }
                                 }
                             }
-                            */
-                            
+
                             // Debug log every 5 seconds left
                             if (timeLeft in 1..20000L && timeLeft % 1000L < 50L) {
                                 android.util.Log.d("Crossfade", "Tick: timeLeft=$timeLeft, crossfadeMs=$actualCrossfadeMs, queueIdx=${player.currentMediaItemIndex}")
                             }
 
-                            if (crossfadeManager.shouldStartCrossfade(timeLeft, player.currentPosition, player.currentMediaItemIndex >= _queue.value.size - 1, _repeatMode.value, _sleepTimerMode.value)) {
+                            if (!skipForGapless && crossfadeManager.shouldStartCrossfade(timeLeft, player.currentPosition, player.currentMediaItemIndex >= _queue.value.size - 1, _repeatMode.value, _sleepTimerMode.value)) {
                                 val nextPlayer = if (player === player1) player2 else player1
                                 if (nextPlayer.mediaItemCount > 0) {
                                     if (nextPlayer.playbackState == androidx.media3.common.Player.STATE_READY) {
@@ -458,7 +460,9 @@ class MusicPlayerManager @Inject constructor(
         if (song.id.startsWith("local_") || song.source.contains("saavncdn.com") || song.source.endsWith(".mp3") || song.source.endsWith(".mp4") || song.source.endsWith(".m4a")) {
             return song.source
         }
-        val cached = resolvedUrlCache[song.id]
+        // The cache is per quality, so flipping High quality takes effect on the next song.
+        val cacheKey = "${song.id}|${if (wantHighQuality()) "hq" else "lq"}"
+        val cached = resolvedUrlCache[cacheKey]
         if (cached != null) return cached
 
         val resolved = withContext(Dispatchers.IO) {
@@ -603,7 +607,7 @@ class MusicPlayerManager @Inject constructor(
             }
             return@withContext song.source
         }
-        resolvedUrlCache[song.id] = resolved
+        resolvedUrlCache[cacheKey] = resolved
         return resolved
     }
 
@@ -639,7 +643,7 @@ class MusicPlayerManager @Inject constructor(
             // After an error ExoPlayer goes idle and plays nothing until we prepare it again.
             // This is why one failed lookup while skipping fast stopped every following song.
             val songId = player.currentMediaItem?.mediaId
-            if (songId != null) resolvedUrlCache.remove(songId) // look the stream up fresh
+            if (songId != null) { resolvedUrlCache.remove("$songId|hq"); resolvedUrlCache.remove("$songId|lq") } // look the stream up fresh
 
             if (songId != null && errorRetrySongId != songId) {
                 errorRetrySongId = songId
@@ -879,6 +883,38 @@ class MusicPlayerManager @Inject constructor(
         if (safeIndex >= 0 && safeIndex < songs.size) {
             _currentIndex.value = safeIndex
             _currentSong.value = songs[safeIndex]
+        }
+    }
+
+    /**
+     * A Jam started or joined: drop the queue you had before it, keep only the song that is playing.
+     * Without this the old list leaked into the Jam the next time anything was played or added.
+     * The current song keeps playing, uninterrupted.
+     */
+    suspend fun trimQueueToCurrent() = withContext(Dispatchers.Main) {
+        val idx = player.currentMediaItemIndex
+        val size = player.mediaItemCount
+        if (idx < 0 || size == 0) return@withContext
+        if (idx + 1 < size) player.removeMediaItems(idx + 1, size)
+        if (idx > 0) player.removeMediaItems(0, idx)
+        val current = _currentSong.value
+        _queue.value = if (current != null) listOf(current) else emptyList()
+        _currentIndex.value = 0
+        preBufferAlternatePlayer()
+    }
+
+    /**
+     * Songs added to a Jam by anyone: add the ones we don't have to the END of the queue.
+     * The playing song is not touched, so it neither restarts nor jumps.
+     */
+    fun appendQueueSync(songs: List<Song>) {
+        scope.launch(Dispatchers.Main) {
+            val known = _queue.value.map { it.id }.toMutableSet()
+            val fresh = songs.filter { it.id.isNotEmpty() && known.add(it.id) }
+            if (fresh.isEmpty()) return@launch
+            _queue.value = _queue.value + fresh
+            player.addMediaItems(fresh.map { buildMediaItem(it) })
+            preBufferAlternatePlayer()
         }
     }
 

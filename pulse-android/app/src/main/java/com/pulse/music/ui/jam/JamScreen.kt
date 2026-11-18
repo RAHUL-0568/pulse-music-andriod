@@ -502,7 +502,7 @@ fun JamScreen(
                             2 -> JamParticipantsTab(viewModel)
                         }
                     }
-                    Spacer(Modifier.height(88.dp))
+                    Spacer(Modifier.height(8.dp)) // the floating bars are accounted for by MainActivity
                 }
             }
         }
