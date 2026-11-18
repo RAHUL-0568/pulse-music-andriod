@@ -653,14 +653,27 @@ class MusicPlayerManager @Inject constructor(
             // An error just after the user moved the seek bar means the download at the new spot failed
             // (slow or flaky mobile data). Retry THIS song where it was a few times. It used to fail over to
             // the next song, which then failed the same way, so several songs went by at once.
-            if (System.currentTimeMillis() - lastUserSeekAt < 20_000L && seekRetryCount < 3) {
-                seekRetryCount++
-                val attempt = seekRetryCount
-                scope.launch {
-                    kotlinx.coroutines.delay(700L * attempt)
-                    if (targetPlayer === player) {
-                        player.prepare()
-                        player.play()
+            if (System.currentTimeMillis() - lastUserSeekAt < 45_000L) {
+                if (seekRetryCount < 6) {
+                    seekRetryCount++
+                    val attempt = seekRetryCount
+                    // Keep the spinner on the play button the whole time we wait for the song to load.
+                    _isBuffering.value = true
+                    scope.launch {
+                        kotlinx.coroutines.delay(1000L * attempt.coerceAtMost(4))
+                        if (targetPlayer === player) {
+                            player.prepare()
+                            player.play()
+                        }
+                    }
+                } else {
+                    // Still not loading after several patient tries: stop here and say so. Never jump to
+                    // another song because of a seek.
+                    seekRetryCount = 0
+                    _isBuffering.value = false
+                    player.pause()
+                    android.os.Handler(android.os.Looper.getMainLooper()).post {
+                        android.widget.Toast.makeText(context, "The song is taking too long to load. Check your connection and press play.", android.widget.Toast.LENGTH_LONG).show()
                     }
                 }
                 return
@@ -1034,9 +1047,17 @@ class MusicPlayerManager @Inject constructor(
         ) {
             crossfadeSkipSongId = _currentSong.value?.id
         }
-        player.seekTo(positionMs)
+        // Moving the bar several times quickly: only the LAST spot is loaded. Each earlier seek used to start a
+        // download that the next one cancelled, and the cancelled loads could fail and skip the song.
         _currentPosition.value = positionMs
+        pendingSeekJob?.cancel()
+        pendingSeekJob = scope.launch {
+            kotlinx.coroutines.delay(250L)
+            player.seekTo(positionMs)
+        }
     }
+
+    private var pendingSeekJob: kotlinx.coroutines.Job? = null
 
     /** Seek by 0..1 using the player's LIVE song length (the stored one can lag behind after a song change). */
     fun seekToFraction(fraction: Float) {
