@@ -669,6 +669,9 @@ class MusicPlayerManager @Inject constructor(
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
             if (targetPlayer !== player) return
             if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO) lastNavDirection = 1 // song ended by itself: we're moving forward
+            // new song: forget the old length right away (the real one arrives via onTimelineChanged / polling)
+            val newDuration = player.duration
+            _duration.value = if (newDuration != androidx.media3.common.C.TIME_UNSET && newDuration > 0) newDuration else 0L
             if (isCrossfading) return // Ignore transitions during crossfade, we already swapped active player
 
             if (_sleepTimerMode.value == SleepTimerMode.END_OF_TRACK) {
@@ -739,6 +742,14 @@ class MusicPlayerManager @Inject constructor(
                     }
                 }
             }
+        }
+
+        // A new song often starts WITHOUT a "ready" event, so the song length used to stay at the previous
+        // song's value. Refresh it whenever the player learns the real length.
+        override fun onTimelineChanged(timeline: androidx.media3.common.Timeline, reason: Int) {
+            if (targetPlayer !== player) return
+            val d = player.duration
+            if (d != androidx.media3.common.C.TIME_UNSET && d > 0) _duration.value = d
         }
 
         override fun onPlaybackStateChanged(playbackState: Int) {
@@ -940,6 +951,16 @@ class MusicPlayerManager @Inject constructor(
         abortCrossfade()
         player.seekTo(positionMs)
         _currentPosition.value = positionMs
+    }
+
+    /** Seek by 0..1 using the player's LIVE song length (the stored one can lag behind after a song change). */
+    fun seekToFraction(fraction: Float) {
+        val live = player.duration
+        val liveOk = live != androidx.media3.common.C.TIME_UNSET && live > 0
+        val total = if (liveOk) live else _duration.value
+        if (total <= 0) return
+        if (liveOk) _duration.value = live
+        seekTo((total * fraction.coerceIn(0f, 1f)).toLong())
     }
 
     /** Skip to the next track in the queue. */

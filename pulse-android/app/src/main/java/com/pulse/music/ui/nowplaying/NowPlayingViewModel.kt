@@ -93,6 +93,7 @@ class NowPlayingViewModel @Inject constructor(
 
     fun togglePlayPause() = musicPlayerManager.togglePlayPause()
     fun seekTo(positionMs: Long) = musicPlayerManager.seekTo(positionMs)
+    fun seekToFraction(fraction: Float) = musicPlayerManager.seekToFraction(fraction)
     fun skipNext() = musicPlayerManager.skipNext()
     fun skipPrevious() = musicPlayerManager.skipPrevious()
     fun skipToPreviousTrack() = musicPlayerManager.skipToPreviousTrack()

@@ -539,22 +539,16 @@ fun MainPlayerContent(
             var isDragging by remember { mutableStateOf(false) }
             var dragValue by remember { mutableStateOf(0f) }
             Column(modifier = Modifier.fillMaxWidth()) {
-                Slider(
+                SeekBar(
                     value = if (isDragging) dragValue else progress.coerceIn(0f, 1f),
-                    onValueChange = { seekProgress ->
+                    onChange = { v ->
                         isDragging = true
-                        dragValue = seekProgress
+                        dragValue = v
                     },
-                    onValueChangeFinished = {
-                        viewModel.seekTo((dragValue * duration).toLong())
+                    onEnd = { v ->
+                        viewModel.seekToFraction(v) // uses the live song length, never a stale one
                         isDragging = false
-                    },
-                    modifier = Modifier.fillMaxWidth().height(20.dp),
-                    colors = SliderDefaults.colors(
-                        thumbColor = pureWhite,
-                        activeTrackColor = pureWhite,
-                        inactiveTrackColor = Color(0xFF3A3A3A)
-                    )
+                    }
                 )
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text(
