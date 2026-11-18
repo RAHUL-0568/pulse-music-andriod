@@ -447,14 +447,20 @@ fun MainPlayerContent(
             modifier = Modifier
                 .widthIn(max = 420.dp)
                 .fillMaxWidth()
+                .fillMaxHeight()
                 .background(bgColor)
-                .padding(horizontal = 24.dp, vertical = 16.dp),
+                // keep clear of the minimize and 3-dots buttons on top and the footer text below
+                .padding(start = 24.dp, end = 24.dp, top = 76.dp, bottom = 28.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // ARTWORK
+            // ARTWORK: takes whatever height is left and is never bigger than that, so it can't cover the buttons
+            BoxWithConstraints(
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                contentAlignment = Alignment.Center
+            ) {
+            val side = if (maxWidth < maxHeight) maxWidth else maxHeight
             Box(modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(1f)
+                .size(side.coerceAtLeast(120.dp))
                 .shadow(24.dp, RoundedCornerShape(16.dp), clip = false)
                 .clip(RoundedCornerShape(16.dp))
                 .background(Color(0xFF141414)),
@@ -487,8 +493,9 @@ fun MainPlayerContent(
                     Icon(Icons.Default.MusicNote, contentDescription = "Music", tint = pureWhite.copy(alpha = 0.5f), modifier = Modifier.size(96.dp))
                 }
             }
+            }
 
-            Spacer(modifier = Modifier.height(28.dp))
+            Spacer(modifier = Modifier.height(20.dp))
 
             // SONG INFO (Top Section)
             Row(
