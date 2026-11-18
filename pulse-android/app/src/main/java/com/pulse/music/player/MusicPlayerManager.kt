@@ -169,6 +169,12 @@ class MusicPlayerManager @Inject constructor(
     private var mediaControllerFuture: com.google.common.util.concurrent.ListenableFuture<androidx.media3.session.MediaController>? = null
     private val crossfadeManager = CrossfadeManager()
 
+    /** The song whose ending the user jumped into by seeking: no crossfade for it (cleared when the song changes). */
+    @Volatile private var crossfadeSkipSongId: String? = null
+
+    /** When the user last moved the seek bar, so a download error right after it isn't treated as a bad song. */
+    @Volatile private var lastUserSeekAt = 0L
+
     /** Gapless playback switch: songs of the same album flow straight into each other, with no crossfade. */
     @Volatile private var gaplessEnabled = false
 
@@ -372,7 +378,7 @@ class MusicPlayerManager @Inject constructor(
                                 android.util.Log.d("Crossfade", "Tick: timeLeft=$timeLeft, crossfadeMs=$actualCrossfadeMs, queueIdx=${player.currentMediaItemIndex}")
                             }
 
-                            if (!skipForGapless && crossfadeManager.shouldStartCrossfade(timeLeft, player.currentPosition, player.currentMediaItemIndex >= _queue.value.size - 1, _repeatMode.value, _sleepTimerMode.value)) {
+                            if (!skipForGapless && crossfadeSkipSongId != _currentSong.value?.id && crossfadeManager.shouldStartCrossfade(timeLeft, player.currentPosition, player.currentMediaItemIndex >= _queue.value.size - 1, _repeatMode.value, _sleepTimerMode.value)) {
                                 val nextPlayer = if (player === player1) player2 else player1
                                 if (nextPlayer.mediaItemCount > 0) {
                                     if (nextPlayer.playbackState == androidx.media3.common.Player.STATE_READY) {
@@ -634,11 +640,31 @@ class MusicPlayerManager @Inject constructor(
         
         // The song we already retried once after an error (so we never loop forever)
         private var errorRetrySongId: String? = null
+        // Retries of the SAME song at the SAME spot after a seek whose download failed
+        private var seekRetryCount = 0
+        // Songs skipped one after another because each failed to load
+        private var consecutiveErrorSkips = 0
 
         override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
             if (targetPlayer !== player) return
             super.onPlayerError(error)
             android.util.Log.e("MusicPlayerManager", "Playback error: ${error.errorCodeName}", error)
+
+            // An error just after the user moved the seek bar means the download at the new spot failed
+            // (slow or flaky mobile data). Retry THIS song where it was a few times. It used to fail over to
+            // the next song, which then failed the same way, so several songs went by at once.
+            if (System.currentTimeMillis() - lastUserSeekAt < 20_000L && seekRetryCount < 3) {
+                seekRetryCount++
+                val attempt = seekRetryCount
+                scope.launch {
+                    kotlinx.coroutines.delay(700L * attempt)
+                    if (targetPlayer === player) {
+                        player.prepare()
+                        player.play()
+                    }
+                }
+                return
+            }
 
             // After an error ExoPlayer goes idle and plays nothing until we prepare it again.
             // This is why one failed lookup while skipping fast stopped every following song.
@@ -651,6 +677,18 @@ class MusicPlayerManager @Inject constructor(
                 return
             }
             errorRetrySongId = null
+            // Never chain through the queue: after two failed songs in a row, stop and say so,
+            // instead of skipping song after song while the connection is bad.
+            consecutiveErrorSkips++
+            if (consecutiveErrorSkips > 2) {
+                consecutiveErrorSkips = 0
+                player.pause()
+                _isBuffering.value = false
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    android.widget.Toast.makeText(context, "Couldn't play these songs. Check your connection and try again.", android.widget.Toast.LENGTH_LONG).show()
+                }
+                return
+            }
             // still failing: move on, in the direction the user was going
             if (lastNavDirection < 0 && player.hasPreviousMediaItem()) {
                 player.seekToPreviousMediaItem()
@@ -763,6 +801,8 @@ class MusicPlayerManager @Inject constructor(
             if (playbackState == Player.STATE_READY) {
                 _duration.value = player.duration.coerceAtLeast(0L)
                 errorRetrySongId = null // this song loaded fine, so a future error gets a fresh retry
+                seekRetryCount = 0
+                consecutiveErrorSkips = 0
             } else if (playbackState == Player.STATE_ENDED) {
                 if (_sleepTimerMode.value == SleepTimerMode.END_OF_TRACK) {
                     _sleepTimerMode.value = SleepTimerMode.OFF
@@ -984,7 +1024,16 @@ class MusicPlayerManager @Inject constructor(
 
     /** Seek to [positionMs] within the current track. */
     fun seekTo(positionMs: Long) {
+        lastUserSeekAt = System.currentTimeMillis()
         abortCrossfade()
+        // Dragging the bar into the last seconds must not start a crossfade (it used to switch to the
+        // next song a few seconds after you moved the bar); the song just plays out its ending.
+        val dur = player.duration
+        if (crossfadeSecs > 0 && dur != androidx.media3.common.C.TIME_UNSET && dur > 0 &&
+            dur - positionMs <= crossfadeSecs * 1000L + 1500L
+        ) {
+            crossfadeSkipSongId = _currentSong.value?.id
+        }
         player.seekTo(positionMs)
         _currentPosition.value = positionMs
     }
